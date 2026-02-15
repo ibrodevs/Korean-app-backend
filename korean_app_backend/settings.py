@@ -23,14 +23,17 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'oauth2_provider',
 
     'rest_framework',
     'rest_framework_simplejwt',  # Add this
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',  # Add this for handling CORS
     'drf_spectacular',
     'drf_spectacular_sidecar',
 
-    'core'
+    'core',
+    'products'
 ]
 
 MIDDLEWARE = [
@@ -97,12 +100,16 @@ AUTH_PASSWORD_VALIDATORS = [
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'oauth2_provider.contrib.rest_framework.OAuth2Authentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         # Allow any access by default - change this for production
         'rest_framework.permissions.AllowAny',
     ),
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_THROTTLE_RATES':{
+        'login': "5/minute",
+    }
 }
 
 # JWT Settings

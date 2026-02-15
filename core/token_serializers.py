@@ -10,4 +10,25 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         # If a client sends 'email', ensure the serializer's username_field is set.
         if 'email' in attrs:
             attrs[self.username_field] = attrs.get('email')
-        return super().validate(attrs)
+    
+        data = super().validate(attrs)
+
+        refresh_token = data.pop('refresh')
+        access_token = data.pop('access')
+        
+        custom_data = {
+            "tokens": {
+                "refresh": refresh_token,
+                "access": access_token,
+            }, 
+            "user": {
+                'id': self.user.id,
+                'email': self.user.email,
+                'first_name': self.user.first_name,
+                'last_name': self.user.last_name,
+                # Добавьте фото или телефон, если они нужны
+                'photo': self.user.photo.url if self.user.photo else None,
+            }
+        }
+
+        return custom_data

@@ -14,6 +14,8 @@ class CustomUserManager(BaseUserManager):
         
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
+        if not password:
+            raise ValueError("Users must have a password") 
         user.set_password(password)
         user.save(using=self._db)
         return user
@@ -38,10 +40,9 @@ class CustomUser(AbstractUser):
     Docstring for User
     """
     username = None
-    email = models.EmailField(('email address'), unique=True)
+    email = models.EmailField(('email address'), unique=True, db_index=True)
+    phone = models.CharField(max_length=120, blank=True, null=True)
 
-    gender = models.BooleanField(null=True, blank=True, verbose_name='True= women, false=men')
-    birth_date = models.DateField(null=True, blank=True, verbose_name='birth_day')
     photo = models.ImageField(null=True, blank=True, verbose_name='profile photo')
 
 
