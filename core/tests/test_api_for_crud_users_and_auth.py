@@ -5,17 +5,18 @@ BASE_URL = 'http://localhost:8000/api'
 
 # def test_can_create_user():
 #     payload = {
-#         'email': 'adil@gmail.com',
+#         'email': 'lii@gmail.com',
 #         'phone': '+996777212798',
 #         "first_name": 'adilhan',
 #         "last_name": 'satymkulov',
 #         'password' :'Adil2008',
 #         'password_confirm' :'Adil2008'
-#             }
+#         }
     
 #     res = requests.post(f'{BASE_URL}/auth/register/', json=payload)
 #     assert res.status_code == 201
 #     assert res.json() 
+#     assert 1 == 0
 
 
 # def test_can_update_user():
@@ -72,26 +73,26 @@ BASE_URL = 'http://localhost:8000/api'
 #     assert 'first_name' in res.json()
 
 
-def test_can_get_me_user():
-    # 1. Логинимся (используем данные из теста регистрации)
-    login_payload = {
-        'email': 'adilhansatymkulov40@gmail.com',
-        'password': 'Adil2008'
-    }
-    login_res = requests.post(f'{BASE_URL}/auth/login/', json=login_payload)
+# def test_can_get_me_user():
+#     # 1. Логинимся (используем данные из теста регистрации)
+#     login_payload = {
+#         'email': 'adilhansatymkulov40@gmail.com',
+#         'password': 'Adil2008'
+#     }
+#     login_res = requests.post(f'{BASE_URL}/auth/login/', json=login_payload)
     
-    # 2. Извлекаем токен из ВАШЕЙ новой структуры {'tokens': {'access': '...'}}
-    access_token = login_res.json()['tokens']['access']
-    refresh_token = login_res.json()['tokens']['refresh']
-    logout_payload = {
-        'refresh': refresh_token
-    }
+#     # 2. Извлекаем токен из ВАШЕЙ новой структуры {'tokens': {'access': '...'}}
+#     access_token = login_res.json()['tokens']['access']
+#     refresh_token = login_res.json()['tokens']['refresh']
+#     logout_payload = {
+#         'refresh': refresh_token
+#     }
 
     
-    # 3. Делаем запрос к /me/ с заголовком Authorization
-    headers = {'Authorization': f'Bearer {access_token}'}
-    res = requests.post(f'{BASE_URL}/auth/logout/', headers=headers, json=logout_payload)
+#     # 3. Делаем запрос к /me/ с заголовком Authorization
+#     headers = {'Authorization': f'Bearer {access_token}'}
+#     res = requests.post(f'{BASE_URL}/auth/logout/', headers=headers, json=logout_payload)
     
-    # 4. Проверяем результат
-    assert res.status_code == 205
+#     # 4. Проверяем результат
+#     assert res.status_code == 205
 

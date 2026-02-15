@@ -16,6 +16,29 @@ class CreateUserAPIView(generics.CreateAPIView):
     queryset = CustomUser.objects.all()
     serializer_class = WriteUserSerializer
 
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = serializer.save()
+        refresh = RefreshToken.for_user(user)
+
+        return Response(
+            data = {
+                "user": {
+                    "id": user.id,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "phone": user.phone,
+                    "email": user.email,
+                },
+                "tokens": {
+                    "access": str(refresh.access_token),
+                    "refresh": str(refresh),
+                }
+            }
+        )
+
 class UpdateUserAPIView(generics.UpdateAPIView):
     permission_classes = [AllowAny]
     queryset = CustomUser.objects.all()
