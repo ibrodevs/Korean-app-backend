@@ -14,9 +14,11 @@ class CustomUserManager(BaseUserManager):
         
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
-        if not password:
-            raise ValueError("Users must have a password") 
-        user.set_password(password)
+        # Allow users without password (OAuth users)
+        if password:
+            user.set_password(password)
+        else:
+            user.set_unusable_password()
         user.save(using=self._db)
         return user
     
@@ -39,9 +41,25 @@ class CustomUser(AbstractUser):
     """
     Docstring for User
     """
+    # OAuth provider choices
+    AUTH_PROVIDER_EMAIL = 'email'
+    AUTH_PROVIDER_GOOGLE = 'google'
+    AUTH_PROVIDER_CHOICES = [
+        (AUTH_PROVIDER_EMAIL, 'Email'),
+        (AUTH_PROVIDER_GOOGLE, 'Google'),
+    ]
+
     username = None
     email = models.EmailField(('email address'), unique=True, db_index=True)
     phone = models.CharField(max_length=120, blank=True, null=True)
+    
+    # OAuth fields
+    google_id = models.CharField(max_length=255, unique=True, null=True, blank=True, db_index=True)
+    auth_provider = models.CharField(
+        max_length=20,
+        choices=AUTH_PROVIDER_CHOICES,
+        default=AUTH_PROVIDER_EMAIL
+    )
 
     photo = models.ImageField(null=True, blank=True, verbose_name='profile photo')
 

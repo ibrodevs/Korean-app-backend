@@ -14,6 +14,9 @@ SECRET_KEY = 'django-insecure-0eaq#&d)auhbdsgm%x@%ug7brin89@&+t9*6s1e(5ih%w5o+)6
 DEBUG = True
 ALLOWED_HOSTS = []
 
+GOOGLE_CLIENT_ID = '1074628944814-je4b5jgu8uccj26rk9v9i73a8guf0kvn.apps.googleusercontent.com'
+GOOGLE_IOS_CLIENT_ID = '1074628944814-mhnit64ojdadqsiegbijkhoctco6nbm8.apps.googleusercontent.com'
+GOOGLE_ANDROID_CLIENT_ID = '1074628944814-agasb9aec40t7dttonnetibm8cm2o4nm.apps.googleusercontent.com'
 
 # Application definition
 INSTALLED_APPS = [
@@ -178,3 +181,14 @@ STATIC_URL = 'static/'
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+# Google OAuth2 Settings
+# Get these from Google Cloud Console: https://console.cloud.google.com/apis/credentials
+# You need to create OAuth 2.0 Client IDs for:
+# 1. Web application (for token verification)
+# 2. iOS application  
+# 3. Android application
+GOOGLE_CLIENT_ID = ''  # Web client ID (required)
+GOOGLE_IOS_CLIENT_ID = ''  # iOS client ID (optional, but needed for iOS app)
+GOOGLE_ANDROID_CLIENT_ID = ''  # Android client ID (optional, but needed for Android app)
