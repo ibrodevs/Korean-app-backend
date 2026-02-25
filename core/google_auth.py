@@ -24,6 +24,7 @@ class GoogleAuthSerializer(serializers.Serializer):
         return data
 
 
+
 class GoogleAuthView(APIView):
     """
     Google OAuth2 Authentication Endpoint
