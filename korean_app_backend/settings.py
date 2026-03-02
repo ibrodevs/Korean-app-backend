@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     'corsheaders',  # Add this for handling CORS
     'drf_spectacular',
     'drf_spectacular_sidecar',
+    'mptt',
 
     'core',
     'products'
