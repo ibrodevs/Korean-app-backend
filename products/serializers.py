@@ -1,176 +1,240 @@
 from rest_framework import serializers
+
 from .models import (
-    WomenClothes, MenClothes, KidsClothes, Shoes,
-    Accessories, Beauty, HomeProduct, Electronics, SportsProduct,
-    Review, Order, OrderItem
+    Category,
+    CategoryTranslation,
+    Brand,
+    BrandTranslation,
+    Product,
+    ProductTranslation,
+    ProductVariant,
+    ProductImage,
+    Attribute,
+    AttributeValue,
+    AttributeValueTranslation,
+    ProductVariantAttribute,
+    ProductVariantMultiAttribute,
 )
 
 
-class MultilingualSerializerMixin:
+class TranslationMixin:
     """
-    Mixin для поддержки мультиязычности в сериализаторах.
-    
-    Использование:
-    class MySerializer(MultilingualSerializerMixin, serializers.ModelSerializer):
-        class Meta:
-            multilingual_fields = ['name', 'description']  # поля с суффиксами _ru, _en, _kg
-            ...
+    Helper mixin to pick a translation for the requested language.
     """
-    
-    def get_multilingual_field(self, obj, field_name):
-        """Получить значение поля на нужном языке"""
-        language = self.context.get('language', 'ru')
-        method_name = f'get_{field_name}'
-        
-        if hasattr(obj, method_name):
-            return getattr(obj, method_name)(language)
-            # flow: 1. getattr(obj, method_name) -> returns needed method. 2) (language) -> calls this method with argument called name. 3) return -> returns the result of method_name(language)
-        
-        # Fallback: прямое получение поля с суффиксом
-        return getattr(obj, f'{field_name}_{language}', # -> this get's field without method. 
-                    getattr(obj, f'{field_name}_ru', None)) # -> this is like fallback if it could find field with lang it will return field_name with _ru suffix   
 
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        
-        # Добавляем поля для мультиязычных атрибутов
-        multilingual_fields = getattr(self.Meta, 'multilingual_fields', [])
-        
-        for field_name in multilingual_fields:
-            self.fields[field_name] = serializers.SerializerMethodField()
-    
+    def _get_language(self) -> str:
+        return self.context.get("language", "ru")
+
+    def _get_translation(self, translations, language_field: str = "language"):
+        lang = self._get_language()
+        by_lang = {t.language: t for t in translations}
+        return by_lang.get(lang) or by_lang.get("ru")
+
+
+class CategorySerializer(TranslationMixin, serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Category
+        fields = ("id", "slug", "parent", "order", "name")
+
     def get_name(self, obj):
-        """Получить name на нужном языке"""
-        return self.get_multilingual_field(obj, 'name')
-    
+        translation = self._get_translation(obj.translations.all())
+        return translation.name if translation else None
+
+
+class CategoryTreeSerializer(CategorySerializer):
+    children = serializers.SerializerMethodField()
+
+    class Meta(CategorySerializer.Meta):
+        fields = CategorySerializer.Meta.fields + ("children",)
+
+    def get_children(self, obj):
+        qs = obj.get_children().prefetch_related("translations")
+        serializer = CategoryTreeSerializer(
+            qs, many=True, context=self.context
+        )
+        return serializer.data
+
+
+class BrandSerializer(TranslationMixin, serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Brand
+        fields = ("id", "slug", "name")
+
+    def get_name(self, obj):
+        translation = self._get_translation(obj.translations.all())
+        return translation.name if translation else None
+
+
+class ProductImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductImage
+        fields = ("id", "image", "alt", "is_main", "order", "variant_id")
+
+
+class AttributeValueSerializer(TranslationMixin, serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+    typed_value = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AttributeValue
+        fields = ("id", "typed_value", "name", "attribute_id")
+
+    def get_typed_value(self, obj):
+        return obj.typed_value
+
+    def get_name(self, obj):
+        translations = obj.translations.all()
+        translation = self._get_translation(translations)
+        return translation.name if translation else None
+
+
+class VariantAttributeSerializer(serializers.Serializer):
+    attribute_slug = serializers.CharField()
+    attribute_id = serializers.IntegerField()
+    value_id = serializers.IntegerField()
+    value = serializers.CharField(allow_null=True)
+    value_name = serializers.CharField(allow_null=True)
+
+
+class ProductVariantSerializer(serializers.ModelSerializer):
+    attributes = serializers.SerializerMethodField()
+    images = ProductImageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ProductVariant
+        fields = (
+            "id",
+            "sku",
+            "price",
+            "old_price",
+            "stock",
+            "is_active",
+            "is_default",
+            "attributes",
+            "images",
+        )
+
+    def get_attributes(self, obj):
+        language = self.context.get("language", "ru")
+
+        single_qs = (
+            ProductVariantAttribute.objects.filter(variant=obj)
+            .select_related("attribute", "value")
+            .prefetch_related(
+                "value__translations",
+            )
+        )
+        multi_qs = (
+            ProductVariantMultiAttribute.objects.filter(variant=obj)
+            .select_related("attribute", "value")
+            .prefetch_related(
+                "value__translations",
+            )
+        )
+
+        items = []
+        for rel in list(single_qs) + list(multi_qs):
+            value = rel.value
+            translations = list(value.translations.all())
+            by_lang = {t.language: t for t in translations}
+            t = by_lang.get(language) or by_lang.get("ru")
+
+            items.append(
+                {
+                    "attribute_slug": rel.attribute.slug,
+                    "attribute_id": rel.attribute_id,
+                    "value_id": value.id,
+                    "value": value.typed_value,
+                    "value_name": t.name if t else None,
+                }
+            )
+
+        return items
+
+
+class ProductBaseSerializer(TranslationMixin, serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
+    main_image = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Product
+        fields = (
+            "id",
+            "slug",
+            "category",
+            "brand",
+            "is_active",
+            "min_price",
+            "name",
+            "description",
+            "main_image",
+        )
+
+    def _get_translation_qs(self, obj):
+        return obj.translations.all()
+
+    def get_name(self, obj):
+        translation = self._get_translation(self._get_translation_qs(obj))
+        return translation.name if translation else None
+
     def get_description(self, obj):
-        """Получить description на нужном языке"""
-        return self.get_multilingual_field(obj, 'description')
+        translation = self._get_translation(self._get_translation_qs(obj))
+        return translation.description if translation else None
+
+    def get_main_image(self, obj):
+        image = obj.images.filter(is_main=True).first() or obj.images.first()
+        if not image:
+            return None
+        return ProductImageSerializer(image, context=self.context).data
 
 
-    
-class WomenClothesSerializer(MultilingualSerializerMixin, serializers.ModelSerializer):
-    class Meta:
-        model = WomenClothes
-        multilingual_fields = ['name', 'description']
-        fields = ('id', 'name', 'description', 'price', 'discount',
-                  'size', 'color', 'material', 'season', 'brand',
-                  'created_at', 'updated_at')
-        read_only_fields = ('created_at', 'updated_at')
+class ProductListSerializer(ProductBaseSerializer):
+    class Meta(ProductBaseSerializer.Meta):
+        fields = ProductBaseSerializer.Meta.fields
 
 
-class MenClothesSerializer(MultilingualSerializerMixin, serializers.ModelSerializer):
-    class Meta:
-        model = MenClothes
-        multilingual_fields = ['name', 'description']
-        fields = ('id', 'name', 'description', 'price', 'discount',
-                  'size', 'color', 'material', 'style', 'brand',
-                  'created_at', 'updated_at')
-        read_only_fields = ('created_at', 'updated_at')
+class ProductDetailSerializer(ProductBaseSerializer):
+    variants = ProductVariantSerializer(many=True, read_only=True)
+    images = ProductImageSerializer(many=True, read_only=True)
+
+    class Meta(ProductBaseSerializer.Meta):
+        fields = ProductBaseSerializer.Meta.fields + (
+            "variants",
+            "images",
+            "created_at",
+            "updated_at",
+        )
 
 
-class KidsClothesSerializer(MultilingualSerializerMixin, serializers.ModelSerializer):
-    class Meta:
-        model = KidsClothes
-        multilingual_fields = ['name', 'description']
-        fields = ('id', 'name', 'description', 'price', 'discount',
-                  'age_group', 'gender', 'color', 'material',
-                  'created_at', 'updated_at')
-        read_only_fields = ('created_at', 'updated_at')
+class ProductFacetValueSerializer(serializers.Serializer):
+    value = serializers.CharField()
+    count = serializers.IntegerField()
 
 
-class ShoesSerializer(MultilingualSerializerMixin, serializers.ModelSerializer):
-    class Meta:
-        model = Shoes
-        multilingual_fields = ['name', 'description']
-        fields = ('id', 'name', 'description', 'price', 'discount',
-                  'size', 'color', 'material', 'season', 'brand',
-                  'created_at', 'updated_at')
-        read_only_fields = ('created_at', 'updated_at')
+class BrandFacetSerializer(serializers.Serializer):
+    slug = serializers.CharField()
+    name = serializers.CharField(allow_null=True)
+    count = serializers.IntegerField()
 
 
-class AccessoriesSerializer(MultilingualSerializerMixin, serializers.ModelSerializer):
-    class Meta:
-        model = Accessories
-        multilingual_fields = ['name', 'description']
-        fields = ('id', 'name', 'description', 'price', 'discount',
-                  'item_type', 'material', 'brand', 'color',
-                  'created_at', 'updated_at')
-        read_only_fields = ('created_at', 'updated_at')
+class PriceRangeFacetSerializer(serializers.Serializer):
+    min = serializers.DecimalField(max_digits=12, decimal_places=2)
+    max = serializers.DecimalField(max_digits=12, decimal_places=2)
 
 
-class BeautySerializer(MultilingualSerializerMixin, serializers.ModelSerializer):
-    class Meta:
-        model = Beauty
-        multilingual_fields = ['name', 'description']
-        fields = ('id', 'name', 'description', 'price', 'discount',
-                  'product_type', 'purpose', 'ingredients', 'volume', 'shelf_life',
-                  'created_at', 'updated_at')
-        read_only_fields = ('created_at', 'updated_at')
+class AttributeFacetValueSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    value = serializers.CharField(allow_null=True)
+    name = serializers.CharField(allow_null=True)
+    count = serializers.IntegerField()
 
 
-class HomeProductSerializer(MultilingualSerializerMixin, serializers.ModelSerializer):
-    class Meta:
-        model = HomeProduct
-        multilingual_fields = ['name', 'description']
-        fields = ('id', 'name', 'description', 'price', 'discount',
-                  'item_type', 'material', 'dimensions', 'color',
-                  'created_at', 'updated_at')
-        read_only_fields = ('created_at', 'updated_at')
+class AttributeFacetSerializer(serializers.Serializer):
+    attribute_slug = serializers.CharField()
+    values = AttributeFacetValueSerializer(many=True)
 
-
-class ElectronicsSerializer(MultilingualSerializerMixin, serializers.ModelSerializer):
-    class Meta:
-        model = Electronics
-        multilingual_fields = ['name', 'description']
-        fields = ('id', 'name', 'description', 'price', 'discount',
-                  'brand', 'model', 'ram', 'storage', 'processor',
-                  'condition', 'warranty_months',
-                  'created_at', 'updated_at')
-        read_only_fields = ('created_at', 'updated_at')
-
-
-class SportsProductSerializer(MultilingualSerializerMixin, serializers.ModelSerializer):
-    class Meta:
-        model = SportsProduct
-        multilingual_fields = ['name', 'description']
-        fields = ('id', 'name', 'description', 'price', 'discount',
-                  'sport_type', 'size', 'material', 'level',
-                  'created_at', 'updated_at')
-        read_only_fields = ('created_at', 'updated_at')
-
-
-class ReviewSerializer(serializers.ModelSerializer):
-    user = serializers.CharField(source='user.username', read_only=True)
-    product_name = serializers.CharField(source='product.name_ru', read_only=True)
-
-    class Meta:
-        model = Review
-        fields = ('id', 'user', 'product', 'product_name', 'opinion', 'grade')
-
-
-class OrderItemSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = OrderItem
-        fields = ('id', 'order', 'product_content_type', 'product_object_id',
-                  'quantity', 'price_at_purchase')
-
-
-class OrderSerializer(serializers.ModelSerializer):
-    customer_username = serializers.CharField(source='customer.username', read_only=True)
-    items = OrderItemSerializer(many=True, read_only=True)
-
-    class Meta:
-        model = Order
-        fields = ('id', 'customer', 'customer_username', 'status', 'items',
-                  'created_at', 'updated_at')
-        read_only_fields = ('created_at', 'updated_at')
-
-
-class OrderCreateSerializer(serializers.ModelSerializer):
-    """Сериализатор для создания заказов"""
-    class Meta:
-        model = Order
-        fields = ('id', 'customer', 'status', 'created_at', 'updated_at')
-        read_only_fields = ('created_at', 'updated_at')

@@ -1,0 +1,20 @@
+PRD Task: Products GET Endpoint with Pagination
+
+Title:
+GET /products – Fetch products with cursor-based pagination
+
+Description:
+Create an API endpoint to return a paginated list of products for the e-commerce application. Since the catalog may contain thousands of products, 
+the endpoint should support cursor-based pagination to ensure performance and scalability.
+
+who can access: anyone.
+
+must do: test api endpoint with pytest, with 80%+ coverage. create md file for frontend developer who will do api integration, so they must understand what happens under the hood
+
+
+you can do: delete or modify serializers, views, urls. You can use drf's built in high level code classes such as generics or viewsets. 
+
+
+non-goals: complex and not readable code. complecated logic, system that would work for 500+ thousands people at a moment. low code.
+
+success criterias: pagination and api endpoint works. 

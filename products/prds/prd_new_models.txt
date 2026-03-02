@@ -1,0 +1,162 @@
+🧠 PRD: E-commerce Catalog — Models Refactor 
+
+
+
+📌 Overview
+
+Цель:
+Автоматически сгенерировать изменения моделей Django так, чтобы:
+
+все миграции корректно создавались и применялись
+
+структура была production-ready
+
+поддерживала SKU, мультиязычность, типизированные атрибуты, изображения для вариантов, MPTT-категории
+
+Изменить можно только модели.
+Нельзя менять бизнес-логику, фронт, API, стейт-машины, Order/OrderItem (они отсутствуют по постановке).
+
+Success Criteria:
+✔️ Все миграции были сгенерированы без конфликтов
+✔️ manage.py migrate проходит без ошибок
+✔️ БД в состоянии готовности (schema корректна, constraints работают)
+
+Видео/скриншоты миграций или тестов базы не нужны.
+
+🎯 Scope
+Включено
+
+Django models.py
+
+Meta constraints (unique_together, indexes)
+
+Связи FK и tree-логику
+
+Мультиязычные таблицы
+
+Поддержка typed attribute values
+
+Денормализация min_price
+
+Исключено
+
+API
+
+Сериализаторы / Viewsets
+
+Фронтенд
+
+Документация к API
+
+Логика заказов (Orders не в этом PRD)
+
+🧱 Model Structure — Requirements
+1) Category
+
+Требования
+
+Использовать django-mptt (MPTTModel)
+
+Поле slug уникально
+
+Поле order (сортировка)
+
+Все переводы в отдельной таблице
+
+Constraints
+
+Индекс на slug
+
+unique_together: (category, language)
+
+2) Brand
+
+Требования
+
+slug уникально
+
+Все переводы в отдельной таблице
+
+Constraints
+
+unique_together: (brand, language)
+
+Индексы на language
+
+3) Product
+
+Требования
+
+slug уникально
+
+min_price денормализовано и индексировано
+
+is_active индексировано
+
+Constraints
+
+FK → Category, Brand
+
+Индекс на (is_active), (min_price)
+
+4) ProductTranslation
+
+Требования
+
+Переводы: name, description, meta_title, meta_description, meta_keywords
+
+unique_together: (product, language)
+
+Index: language
+
+5) ProductVariant
+
+Требования
+
+SKU уникально
+
+Price, stock, is_active
+
+Флаг is_default
+
+Индексы на price, stock
+
+6) ProductImage
+
+Требования
+
+Возможна привязка к variant или к product
+
+product денормализованно для удобства запросов
+
+ordering
+
+7) Attribute + Typed Value
+
+Требования
+
+Attribute.value_type из строго фиксированного набора
+
+Типизированные таблицы для int, float, boolean, color, text
+
+property typed_value возвращает правильное значение
+
+8) Translations for Attribute/AttributeValue
+
+Требования
+
+AttributeTranslation
+
+AttributeValueTranslation
+
+Индексы на language
+
+9) ProductVariantAttribute
+
+Требования
+
+unique_together = (variant, attribute)
+
+attribute.is_multiple MUST be False
+
+Success = production-ready database schema with no migration errors.

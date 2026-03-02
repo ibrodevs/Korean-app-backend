@@ -1,0 +1,7 @@
+goal: create admins who can do crud operations on products
+
+their role like owners of products who can add some products and manage them
+
+they can add products, edit products, delete products
+
+none-goal: these admins are not built in superusers. they are just users but with more permissions to manage products.
