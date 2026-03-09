@@ -21,6 +21,9 @@ class Category(MPTTModel):
             models.Index(fields=["slug"]),
         ]
 
+    def __str__(self):
+        return self.slug
+
 
 class CategoryTranslation(models.Model):
     category = models.ForeignKey(
@@ -37,9 +40,15 @@ class CategoryTranslation(models.Model):
             models.Index(fields=["language", "name"]),
         ]
 
+    def __str__(self):
+        return f"{self.name} ({self.language})"
+
 
 class Brand(models.Model):
     slug = models.SlugField(unique=True)
+
+    def __str__(self):
+        return self.slug
 
 
 class BrandTranslation(models.Model):
@@ -56,6 +65,9 @@ class BrandTranslation(models.Model):
         indexes = [
             models.Index(fields=["language", "name"]),
         ]
+
+    def __str__(self):
+        return f"{self.name} ({self.language})"
 
 
 class Product(models.Model):
@@ -90,6 +102,9 @@ class Product(models.Model):
             models.Index(fields=["is_active"]),
         ]
 
+    def __str__(self):
+        return self.slug
+
 
 class ProductTranslation(models.Model):
     product = models.ForeignKey(
@@ -109,6 +124,9 @@ class ProductTranslation(models.Model):
         indexes = [
             models.Index(fields=["language", "name"]),
         ]
+
+    def __str__(self):
+        return f"{self.name} ({self.language})"
 
 
 class ProductVariant(models.Model):
@@ -135,6 +153,9 @@ class ProductVariant(models.Model):
             models.Index(fields=["stock"]),
         ]
 
+    def __str__(self):
+        return f"{self.product.slug} - {self.sku}"
+
 
 class ProductImage(models.Model):
     variant = models.ForeignKey(
@@ -157,6 +178,10 @@ class ProductImage(models.Model):
     class Meta:
         ordering = ["order"]
 
+    def __str__(self):
+        alt_text = self.alt or f"Image {self.id}"
+        return f"{alt_text} (Order: {self.order})"
+
 
 class Attribute(models.Model):
     VALUE_TYPE_CHOICES = [
@@ -170,6 +195,9 @@ class Attribute(models.Model):
     slug = models.SlugField(unique=True)
     value_type = models.CharField(max_length=20, choices=VALUE_TYPE_CHOICES)
     is_multiple = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"{self.slug} ({self.get_value_type_display()})"
 
 
 class AttributeTranslation(models.Model):
@@ -186,6 +214,9 @@ class AttributeTranslation(models.Model):
         indexes = [
             models.Index(fields=["language", "name"]),
         ]
+
+    def __str__(self):
+        return f"{self.name} ({self.language})"
 
 
 class AttributeValue(models.Model):
@@ -209,6 +240,10 @@ class AttributeValue(models.Model):
             return self.text.value
         return None
 
+    def __str__(self):
+        value = self.typed_value
+        return f"{self.attribute.slug}: {value}"
+
 
 class AttributeValueTranslation(models.Model):
     value = models.ForeignKey(
@@ -225,6 +260,9 @@ class AttributeValueTranslation(models.Model):
             models.Index(fields=["language", "name"]),
         ]
 
+    def __str__(self):
+        return f"{self.name} ({self.language})"
+
 
 class AttributeTextValue(models.Model):
     base = models.OneToOneField(
@@ -233,6 +271,9 @@ class AttributeTextValue(models.Model):
         related_name="text",
     )
     value = models.CharField(max_length=255)
+
+    def __str__(self):
+        return f"Text: {self.value}"
 
 
 class AttributeIntValue(models.Model):
@@ -243,6 +284,9 @@ class AttributeIntValue(models.Model):
     )
     value = models.IntegerField(db_index=True)
 
+    def __str__(self):
+        return f"Int: {self.value}"
+
 
 class AttributeFloatValue(models.Model):
     base = models.OneToOneField(
@@ -251,6 +295,9 @@ class AttributeFloatValue(models.Model):
         related_name="float",
     )
     value = models.FloatField(db_index=True)
+
+    def __str__(self):
+        return f"Float: {self.value}"
 
 
 class AttributeBooleanValue(models.Model):
@@ -261,6 +308,9 @@ class AttributeBooleanValue(models.Model):
     )
     value = models.BooleanField(db_index=True)
 
+    def __str__(self):
+        return f"Boolean: {self.value}"
+
 
 class AttributeColorValue(models.Model):
     base = models.OneToOneField(
@@ -269,6 +319,9 @@ class AttributeColorValue(models.Model):
         related_name="color",
     )
     value = models.CharField(max_length=7)
+
+    def __str__(self):
+        return f"Color: {self.value}"
 
 
 class ProductVariantAttribute(models.Model):
@@ -282,6 +335,9 @@ class ProductVariantAttribute(models.Model):
 
     class Meta:
         unique_together = ("variant", "attribute")
+
+    def __str__(self):
+        return f"{self.variant} - {self.attribute}: {self.value}"
 
 
 class ProductVariantMultiAttribute(models.Model):
@@ -298,3 +354,6 @@ class ProductVariantMultiAttribute(models.Model):
         indexes = [
             models.Index(fields=["variant", "attribute"]),
         ]
+
+    def __str__(self):
+        return f"{self.variant} - {self.attribute}: {self.value}"

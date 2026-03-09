@@ -5,7 +5,10 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.filters import SearchFilter
 from rest_framework.pagination import CursorPagination
 from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
+from django.views.decorators.cache import cache_page
+from django.utils.decorators import method_decorator
 
 from .models import (
     Category,
@@ -17,6 +20,9 @@ from .models import (
     ProductVariantAttribute,
     ProductVariantMultiAttribute,
 )
+from .documents import ProductDocument
+from elasticsearch_dsl import Q
+from django.db.models import Case, When
 from .serializers import (
     CategoryTreeSerializer,
     BrandSerializer,
@@ -230,125 +236,176 @@ class ProductDetailAPIView(generics.RetrieveAPIView):
         return super().get(request, *args, **kwargs)
 
 
-class CatalogSearchAPIView(ProductListAPIView):
+class CatalogSearchAPIView(generics.ListAPIView):
     """
     GET /api/v1/catalog-search/
 
-    Наследует фильтрацию товаров и добавляет фасеты.
+    Использует Elasticsearch для фильтрации товаров и построения фасетов.
     """
+    permission_classes = [AllowAny]
+    serializer_class = ProductListSerializer
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        lang = self.request.query_params.get("lang", "ru")
+        context["language"] = lang
+        return context
 
     @extend_schema(
-        summary="Фасетный поиск по каталогу",
+        summary="Фасетный поиск по каталогу (Elasticsearch)",
         description=(
             "Возвращает товары и агрегированные данные для построения фильтров: "
-            "бренды, диапазон цен, значения атрибутов."
+            "бренды, диапазон цен, значения атрибутов (рассчитывается в Elasticsearch)."
         ),
         tags=["Catalog"],
     )
     def list(self, request, *args, **kwargs):
-        response = super().list(request, *args, **kwargs)
+        lang = request.query_params.get("lang", "ru")
+        search = ProductDocument.search().filter("term", is_active=True)
 
-        queryset = self.filter_queryset(self.get_queryset())
+        params = request.query_params
 
-        brand_facets = self._build_brand_facets(queryset)
-        price_range = self._build_price_range_facets(queryset)
-        attribute_facets = self._build_attribute_facets(queryset)
+        # Filters
+        if category := params.get("category"):
+            search = search.filter("term", category__slug=category)
 
-        response.data = {
-            "results": response.data["results"],
-            "next": response.data.get("next"),
-            "previous": response.data.get("previous"),
+        if brand := params.get("brand"):
+            search = search.filter("term", brand__slug=brand)
+
+        if price_min := params.get("price[min]"):
+            search = search.filter("range", min_price={"gte": float(price_min)})
+        if price_max := params.get("price[max]"):
+            search = search.filter("range", min_price={"lte": float(price_max)})
+
+        if q := params.get("search"):
+            search = search.query("multi_match", query=q, fields=["translations.name", "translations.description"])
+
+        attr_params = {k: v for k, v in params.items() if k.startswith("attr_")}
+        for raw_key, value in attr_params.items():
+            slug = raw_key[len("attr_") :]
+            values = params.getlist(raw_key) or [value]
+            
+            search = search.filter("nested", path="attributes", query=Q("bool", filter=[
+                Q("term", attributes__attribute_slug=slug),
+                Q("terms", attributes__value_text=values)
+            ]))
+
+        # Aggregations
+        search.aggs.bucket('brands', 'terms', field='brand.slug', size=500)
+        search.aggs.bucket('price_min', 'min', field='min_price')
+        search.aggs.bucket('price_max', 'max', field='min_price')
+
+        attr_agg = search.aggs.bucket('attributes', 'nested', path='attributes')
+        attr_agg.bucket('by_value_id', 'terms', field='attributes.value_id', size=2000)
+
+        # Sorting (newest first)
+        search = search.sort('-created_at')
+
+        # Pagination logic
+        try:
+            page_size = int(params.get("page_size", 40))
+        except ValueError:
+            page_size = 40
+
+        try:
+            page_num = int(params.get("page", 1))
+        except ValueError:
+            page_num = 1
+
+        start = (page_num - 1) * page_size
+        end = start + page_size
+
+        search = search[start:end]
+
+        try:
+            response = search.execute()
+        except Exception as e:
+            raise ValidationError({"detail": f"Elasticsearch query failed: {str(e)}"})
+
+        # Facets processing
+        brand_facets = self._format_brand_facets(response.aggregations.brands.buckets, lang)
+
+        price_range = None
+        if hasattr(response.aggregations, 'price_min') and response.aggregations.price_min.value is not None:
+            price_range = {
+                "min": response.aggregations.price_min.value,
+                "max": response.aggregations.price_max.value
+            }
+
+        attribute_facets = self._format_attribute_facets(response.aggregations.attributes.by_value_id.buckets, lang)
+
+        # Fetch actual Django models for DRF serializer
+        product_ids = [hit.meta.id for hit in response]
+
+        if product_ids:
+            preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(product_ids)])
+            qs = Product.objects.filter(id__in=product_ids).order_by(preserved)
+            qs = qs.select_related("category", "brand").prefetch_related("translations", "images")
+        else:
+            qs = Product.objects.none()
+
+        serializer = self.get_serializer(qs, many=True)
+
+        # Pagination links
+        count = response.hits.total.value
+        base_url = request.build_absolute_uri(request.path)
+
+        import urllib.parse
+        def get_page_url(pn):
+            query = request.query_params.copy()
+            query['page'] = pn
+            return f"{base_url}?{urllib.parse.urlencode(query, doseq=True)}"
+
+        next_url = get_page_url(page_num + 1) if end < count else None
+        prev_url = get_page_url(page_num - 1) if page_num > 1 else None
+
+        return Response({
+            "count": count,
+            "next": next_url,
+            "previous": prev_url,
+            "results": serializer.data,
             "facets": {
                 "brands": brand_facets,
                 "price": price_range,
                 "attributes": attribute_facets,
             },
-        }
-        return response
+        })
 
-    def _build_brand_facets(self, queryset):
-        lang = self.request.query_params.get("lang", "ru")
-        qs = (
-            queryset.exclude(brand__isnull=True)
-            .values("brand__slug", "brand__translations__language", "brand__translations__name")
-            .annotate(count=Count("id"))
-        )
-        by_slug = {}
-        for row in qs:
-            slug = row["brand__slug"]
-            lang_code = row["brand__translations__language"]
-            name = row["brand__translations__name"]
-            count = row["count"]
+    def _format_brand_facets(self, buckets, lang):
+        brand_slugs = [b.key for b in buckets]
+        slug_to_count = {b.key: b.doc_count for b in buckets}
 
-            item = by_slug.setdefault(
-                slug,
-                {"slug": slug, "name_by_lang": {}, "count": 0},
-            )
-            item["name_by_lang"][lang_code] = name
-            item["count"] += count
+        if not brand_slugs:
+            return []
+
+        brands = Brand.objects.filter(slug__in=brand_slugs).prefetch_related("translations")
 
         data = []
-        for slug, info in by_slug.items():
-            name = info["name_by_lang"].get(lang) or info["name_by_lang"].get("ru")
-            data.append(
-                {
-                    "slug": slug,
-                    "name": name,
-                    "count": info["count"],
-                }
-            )
+        for b in brands:
+            translations = list(b.translations.all())
+            by_lang = {t.language: t for t in translations}
+            t = by_lang.get(lang) or by_lang.get("ru")
+
+            data.append({
+                "slug": b.slug,
+                "name": t.name if t else b.slug,
+                "count": slug_to_count.get(b.slug, 0)
+            })
 
         serializer = BrandFacetSerializer(data=data, many=True)
         serializer.is_valid(raise_exception=True)
         return serializer.data
 
-    def _build_price_range_facets(self, queryset):
-        agg = queryset.aggregate(price_min=Min("min_price"), price_max=Max("min_price"))
-        if agg["price_min"] is None or agg["price_max"] is None:
-            return None
-        serializer = PriceRangeFacetSerializer(
-            data={"min": agg["price_min"], "max": agg["price_max"]}
-        )
-        serializer.is_valid(raise_exception=True)
-        return serializer.data
+    def _format_attribute_facets(self, buckets, lang):
+        value_to_count = {b.key: b.doc_count for b in buckets}
+        value_ids = list(value_to_count.keys())
 
-    def _build_attribute_facets(self, queryset):
-        product_ids = queryset.values_list("id", flat=True)
-        variant_ids = ProductVariant.objects.filter(
-            product_id__in=product_ids
-        ).values_list("id", flat=True)
+        if not value_ids:
+            return []
 
-        value_ids = set(
-            list(
-                ProductVariantAttribute.objects.filter(
-                    variant_id__in=variant_ids
-                ).values_list("value_id", flat=True)
-            )
-            + list(
-                ProductVariantMultiAttribute.objects.filter(
-                    variant_id__in=variant_ids
-                ).values_list("value_id", flat=True)
-            )
-        )
         values_qs = AttributeValue.objects.filter(id__in=value_ids).select_related(
             "attribute"
         ).prefetch_related("translations")
-
-        lang = self.request.query_params.get("lang", "ru")
-
-        counts = (
-            ProductVariant.objects.filter(
-                Q(single_attributes__value_id__in=value_ids)
-                | Q(multi_attributes__value_id__in=value_ids)
-            )
-            .values("single_attributes__value_id", "multi_attributes__value_id")
-            .annotate(count=Count("id"))
-        )
-
-        value_to_count = {}
-        for row in counts:
-            vid = row["single_attributes__value_id"] or row["multi_attributes__value_id"]
-            value_to_count[vid] = value_to_count.get(vid, 0) + row["count"]
 
         facets_by_attr = {}
         for v in values_qs:
@@ -391,6 +448,7 @@ class CategoryTreeAPIView(generics.ListAPIView):
         context["language"] = lang
         return context
 
+    @method_decorator(cache_page(60 * 60))   # ← ДОБАВИТЬ
     @extend_schema(
         summary="Дерево категорий",
         description="Возвращает дерево категорий со всеми переводами.",
@@ -412,7 +470,8 @@ class BrandListAPIView(generics.ListAPIView):
         lang = self.request.query_params.get("lang", "ru")
         context["language"] = lang
         return context
-
+        
+    @method_decorator(cache_page(60 * 60))   # ← ДОБАВИТЬ
     @extend_schema(
         summary="Список брендов",
         description="Возвращает список брендов с переводами.",

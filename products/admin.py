@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 from django.db import models
+from django import forms
 from django.forms import TextInput, Textarea
 from mptt.admin import MPTTModelAdmin, DraggableMPTTAdmin
 from .models import (
@@ -35,7 +36,6 @@ class CategoryAdmin(DraggableMPTTAdmin):
     list_display_links = ['indented_title']
     list_editable = ['order']
     search_fields = ['slug', 'translations__name']
-    prepopulated_fields = {'slug': ('translations__name',)}
     inlines = [CategoryTranslationInline]
     
     def get_queryset(self, request):
@@ -56,7 +56,6 @@ class BrandAdmin(admin.ModelAdmin):
     """Админка для брендов"""
     list_display = ['name', 'slug', 'products_count']
     search_fields = ['slug', 'translations__name']
-    prepopulated_fields = {'slug': ('translations__name',)}
     inlines = [BrandTranslationInline]
     
     def get_queryset(self, request):
@@ -110,7 +109,6 @@ class ProductAdmin(admin.ModelAdmin):
     list_display = ['name', 'category', 'brand', 'is_active', 'min_price', 'variants_count', 'created_at']
     list_filter = ['is_active', 'category', 'brand', 'created_at']
     search_fields = ['slug', 'translations__name', 'translations__description']
-    prepopulated_fields = {'slug': ('translations__name',)}
     readonly_fields = ['created_at', 'updated_at']
     date_hierarchy = 'created_at'
     
@@ -201,11 +199,82 @@ class ProductVariantAdmin(admin.ModelAdmin):
     product_name.admin_order_field = 'product__translations__name'
 
 
+class AttributeValueForm(forms.ModelForm):
+    text_value = forms.CharField(max_length=255, required=False, label='Текст')
+    int_value = forms.IntegerField(required=False, label='Целое число')
+    float_value = forms.FloatField(required=False, label='Дробное число')
+    boolean_value = forms.BooleanField(required=False, label='Булево', widget=forms.Select(choices=[(True, 'Да'), (False, 'Нет')]))
+    color_value = forms.CharField(max_length=7, required=False, label='Цвет (HEX)')
+
+    class Meta:
+        model = AttributeValue
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk:
+            if hasattr(self.instance, 'text'):
+                self.initial['text_value'] = self.instance.text.value
+            if hasattr(self.instance, 'int'):
+                self.initial['int_value'] = self.instance.int.value
+            if hasattr(self.instance, 'float'):
+                self.initial['float_value'] = self.instance.float.value
+            if hasattr(self.instance, 'boolean'):
+                self.initial['boolean_value'] = self.instance.boolean.value
+            if hasattr(self.instance, 'color'):
+                self.initial['color_value'] = self.instance.color.value
+
+    def save(self, commit=True):
+        instance = super().save(commit=commit)
+        
+        def save_related():
+            attribute = getattr(instance, 'attribute', None)
+            if not attribute:
+                return
+            
+            val_type = attribute.value_type
+            if val_type == 'text':
+                v = self.cleaned_data.get('text_value')
+                if v is not None:
+                    AttributeTextValue.objects.update_or_create(base=instance, defaults={'value': v})
+            elif val_type == 'int':
+                v = self.cleaned_data.get('int_value')
+                if v is not None:
+                    AttributeIntValue.objects.update_or_create(base=instance, defaults={'value': v})
+            elif val_type == 'float':
+                v = self.cleaned_data.get('float_value')
+                if v is not None:
+                    AttributeFloatValue.objects.update_or_create(base=instance, defaults={'value': v})
+            elif val_type == 'boolean':
+                v = self.cleaned_data.get('boolean_value')
+                if v is not None:
+                    AttributeBooleanValue.objects.update_or_create(base=instance, defaults={'value': v})
+            elif val_type == 'color':
+                v = self.cleaned_data.get('color_value')
+                if v is not None:
+                    AttributeColorValue.objects.update_or_create(base=instance, defaults={'value': v})
+
+        if commit:
+            save_related()
+        else:
+            old_save_m2m = self.save_m2m
+            def new_save_m2m():
+                old_save_m2m()
+                save_related()
+            self.save_m2m = new_save_m2m
+            
+        return instance
+
+
 class AttributeValueInline(admin.TabularInline):
     """Инлайн для значений атрибута"""
     model = AttributeValue
+    form = AttributeValueForm
     extra = 1
     show_change_link = True
+    classes = ['collapse']
+    verbose_name = 'Значение атрибута'
+    verbose_name_plural = 'Значения атрибута'
     
     def get_fields(self, request, obj=None):
         if obj:
@@ -219,7 +288,7 @@ class AttributeValueInline(admin.TabularInline):
                 return ['boolean_value']
             elif obj.value_type == 'color':
                 return ['color_value', 'color_preview']
-        return []
+        return ['text_value', 'int_value', 'float_value', 'boolean_value', 'color_value']
     
     def get_readonly_fields(self, request, obj=None):
         if obj and obj.value_type == 'color':
@@ -246,7 +315,6 @@ class AttributeAdmin(admin.ModelAdmin):
     list_display = ['name', 'slug', 'value_type', 'is_multiple', 'values_count']
     list_filter = ['value_type', 'is_multiple']
     search_fields = ['slug', 'translations__name']
-    prepopulated_fields = {'slug': ('translations__name',)}
     inlines = [AttributeTranslationInline, AttributeValueInline]
     
     def get_queryset(self, request):
@@ -262,134 +330,34 @@ class AttributeAdmin(admin.ModelAdmin):
         return format_html('<b>{}</b>', count)
     values_count.short_description = 'Значений'
 
-
-class AttributeValueTranslationInline(BaseTranslationInline):
-    model = AttributeValueTranslation
-    fields = ['language', 'name']
-
+# Добавьте эту простую регистрацию в конец файла (после всех остальных классов)
 
 @admin.register(AttributeValue)
-class AttributeValueAdmin(admin.ModelAdmin):
-    """Админка для значений атрибутов"""
-    list_display = ['id', 'attribute_name', 'value_display', 'translations_count']
-    list_filter = ['attribute__value_type', 'attribute']
+class SimpleAttributeValueAdmin(admin.ModelAdmin):
+    """Простая админка для автодополнения"""
     search_fields = ['translations__name', 'text__value', 'int__value', 'float__value', 'color__value']
-    inlines = [AttributeValueTranslationInline]
-    
-    fieldsets = [
-        ('Атрибут', {
-            'fields': ['attribute']
-        }),
-    ]
-    
-    def get_fieldsets(self, request, obj=None):
-        fieldsets = super().get_fieldsets(request, obj)
-        
-        if obj and obj.attribute:
-            value_type = obj.attribute.value_type
-            if value_type == 'text':
-                extra_fields = [('Значение', {'fields': ['text_value']})]
-            elif value_type == 'int':
-                extra_fields = [('Значение', {'fields': ['int_value']})]
-            elif value_type == 'float':
-                extra_fields = [('Значение', {'fields': ['float_value']})]
-            elif value_type == 'boolean':
-                extra_fields = [('Значение', {'fields': ['boolean_value']})]
-            elif value_type == 'color':
-                extra_fields = [('Значение', {'fields': ['color_value', 'color_preview']})]
-            else:
-                extra_fields = []
-            
-            fieldsets = list(fieldsets) + extra_fields
-        
-        return fieldsets
-    
-    def get_readonly_fields(self, request, obj=None):
-        readonly = []
-        if obj and obj.attribute and obj.attribute.value_type == 'color':
-            readonly.append('color_preview')
-        return readonly
+    autocomplete_fields = ['attribute']
     
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related('attribute').prefetch_related(
-            'attribute__translations', 'translations'
+        return super().get_queryset(request).select_related(
+            'attribute'
+        ).prefetch_related(
+            'translations', 'text', 'int', 'float', 'boolean', 'color'
         )
     
-    def attribute_name(self, obj):
-        translation = obj.attribute.translations.first()
-        return translation.name if translation else obj.attribute.slug
-    attribute_name.short_description = 'Атрибут'
-    
-    def value_display(self, obj):
-        if hasattr(obj, 'text'):
-            return obj.text.value
-        elif hasattr(obj, 'int'):
-            return obj.int.value
-        elif hasattr(obj, 'float'):
-            return obj.float.value
-        elif hasattr(obj, 'boolean'):
-            return 'Да' if obj.boolean.value else 'Нет'
-        elif hasattr(obj, 'color'):
-            return format_html(
-                '<span style="color: {};">⬤</span> {}',
-                obj.color.value, obj.color.value
+    def get_search_results(self, request, queryset, search_term):
+        queryset, use_distinct = super().get_search_results(request, queryset, search_term)
+        
+        # Добавляем поиск по связанным моделям значений
+        if search_term:
+            queryset |= self.model.objects.filter(
+                models.Q(text__value__icontains=search_term) |
+                models.Q(int__value__icontains=search_term) |
+                models.Q(float__value__icontains=search_term) |
+                models.Q(color__value__icontains=search_term)
             )
-        return '-'
-    value_display.short_description = 'Значение'
-    
-    def translations_count(self, obj):
-        count = obj.translations.count()
-        return format_html('<b>{}</b>', count)
-    translations_count.short_description = 'Переводов'
-    
-    def color_preview(self, obj):
-        if hasattr(obj, 'color') and obj.color:
-            return format_html(
-                '<div style="width: 50px; height: 50px; background-color: {}; border-radius: 4px;"></div>',
-                obj.color.value
-            )
-        return '-'
-    color_preview.short_description = 'Превью'
-
-
-# Регистрация моделей значений атрибутов для возможности прямого редактирования
-@admin.register(AttributeTextValue)
-class AttributeTextValueAdmin(admin.ModelAdmin):
-    list_display = ['base', 'value']
-    search_fields = ['value']
-
-
-@admin.register(AttributeIntValue)
-class AttributeIntValueAdmin(admin.ModelAdmin):
-    list_display = ['base', 'value']
-    search_fields = ['value']
-
-
-@admin.register(AttributeFloatValue)
-class AttributeFloatValueAdmin(admin.ModelAdmin):
-    list_display = ['base', 'value']
-    search_fields = ['value']
-
-
-@admin.register(AttributeBooleanValue)
-class AttributeBooleanValueAdmin(admin.ModelAdmin):
-    list_display = ['base', 'value']
-    list_filter = ['value']
-
-
-@admin.register(AttributeColorValue)
-class AttributeColorValueAdmin(admin.ModelAdmin):
-    list_display = ['base', 'value', 'color_preview']
-    search_fields = ['value']
-    
-    def color_preview(self, obj):
-        return format_html(
-            '<div style="width: 30px; height: 30px; background-color: {}; border-radius: 4px;"></div>',
-            obj.value
-        )
-    color_preview.short_description = 'Превью'
-
-
+        
+        return queryset, use_distinct
 # Настройка заголовка админки
 admin.site.site_header = 'Управление интернет-магазином'
 admin.site.site_title = 'Админка магазина'

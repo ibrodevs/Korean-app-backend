@@ -10,3 +10,8 @@ drf-spectacular-sidecar>=2024.1
 google-auth>=2.25
 pillow>=10.0
 python-decouple>=3.8
+psycopg2-binary>=2.9.9
+django-elasticsearch-dsl>=8.0,<9.0
+elasticsearch-dsl>=8.0
+django-redis 
+django-environ>=0.11.2

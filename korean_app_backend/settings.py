@@ -4,15 +4,16 @@ Django settings for korean_app_backend project.
 
 from pathlib import Path
 from datetime import timedelta
+from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 # Quick-start development settings - unsuitable for production
-SECRET_KEY = 'django-insecure-0eaq#&d)auhbdsgm%x@%ug7brin89@&+t9*6s1e(5ih%w5o+)6'
-DEBUG = True
-ALLOWED_HOSTS = []
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-0eaq#&d)auhbdsgm%x@%ug7brin89@&+t9*6s1e(5ih%w5o+)6')
+DEBUG = config('DEBUG', default=True, cast=bool)
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*', cast=lambda v: [s.strip() for s in v.split(',')])
 
 GOOGLE_CLIENT_ID = '1074628944814-je4b5jgu8uccj26rk9v9i73a8guf0kvn.apps.googleusercontent.com'
 GOOGLE_IOS_CLIENT_ID = '1074628944814-mhnit64ojdadqsiegbijkhoctco6nbm8.apps.googleusercontent.com'
@@ -35,6 +36,7 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'drf_spectacular_sidecar',
     'mptt',
+    'django_elasticsearch_dsl',
 
     'core',
     'products'
@@ -73,12 +75,28 @@ WSGI_APPLICATION = 'korean_app_backend.wsgi.application'
 
 
 # Database
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+import os
+db_name = config('DB_NAME', default=str(BASE_DIR / 'db.sqlite3'))
+if db_name.endswith('.sqlite3') or db_name.endswith('.sqlite'):
+    print("Using SQLite database")
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': db_name,
+        }
     }
-}
+else:
+    print("Using PostgreSQL database")
+    DATABASES = {
+         "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.getenv("DB_NAME", "korean_app"),
+        "USER": os.getenv("DB_USER", "postgres"),
+        "PASSWORD": os.getenv("DB_PASSWORD", "postgres"),
+        "HOST": os.getenv("DB_HOST", "db"),
+        "PORT": os.getenv("DB_PORT", "5432"),
+        }
+    }
 
 AUTH_USER_MODEL = 'core.CustomUser'
 
@@ -114,6 +132,22 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES':{
         'login': "5/minute",
     }
+}
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": config("REDIS_URL", default="redis://127.0.0.1:6379/1"),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    }
+}
+
+ELASTICSEARCH_DSL = {
+    'default': {
+        'hosts': config('ELASTICSEARCH_URL', default='http://localhost:9200'),
+    },
 }
 
 # JWT Settings
