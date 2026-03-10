@@ -45,7 +45,7 @@ class CategoryTranslation(models.Model):
 
 
 class Brand(models.Model):
-    slug = models.SlugField(unique=True)
+    slug = models.SlugField(unique=True, db_index=True)
 
     def __str__(self):
         return self.slug
@@ -98,8 +98,9 @@ class Product(models.Model):
 
     class Meta:
         indexes = [
+            models.Index(fields=["is_active", "category", "brand"]),
             models.Index(fields=["-created_at"]),
-            models.Index(fields=["is_active"]),
+            models.Index(fields=["min_price"]),
         ]
 
     def __str__(self):
@@ -149,6 +150,7 @@ class ProductVariant(models.Model):
 
     class Meta:
         indexes = [
+            models.Index(fields=["product"]),
             models.Index(fields=["price"]),
             models.Index(fields=["stock"]),
         ]
@@ -318,7 +320,7 @@ class AttributeColorValue(models.Model):
         on_delete=models.CASCADE,
         related_name="color",
     )
-    value = models.CharField(max_length=7)
+    value = models.CharField(max_length=7, db_index=True)
 
     def __str__(self):
         return f"Color: {self.value}"
@@ -335,6 +337,9 @@ class ProductVariantAttribute(models.Model):
 
     class Meta:
         unique_together = ("variant", "attribute")
+        indexes = [
+            models.Index(fields=["variant", "attribute"]),
+        ]
 
     def __str__(self):
         return f"{self.variant} - {self.attribute}: {self.value}"

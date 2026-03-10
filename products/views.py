@@ -2,13 +2,15 @@ from django.db.models import Q, Min, Max, Count
 from django_filters.rest_framework import DjangoFilterBackend, FilterSet, BooleanFilter, CharFilter
 from rest_framework import generics
 from rest_framework.exceptions import ValidationError
-from rest_framework.filters import SearchFilter
-from rest_framework.pagination import CursorPagination
+from rest_framework.filters import SearchFilter, OrderingFilter
+from rest_framework.pagination import CursorPagination, LimitOffsetPagination
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 from django.views.decorators.cache import cache_page
 from django.utils.decorators import method_decorator
+
+from rest_framework.throttling import AnonRateThrottle
 
 from .models import (
     Category,
@@ -37,6 +39,10 @@ from .serializers import (
 class ProductCursorPagination(CursorPagination):
     page_size = 40
     ordering = "-created_at"
+
+class ProductLimitOffsetPagination(LimitOffsetPagination):
+    default_limit = 40
+    max_limit = 100
 
 
 class ProductFilterSet(FilterSet):
@@ -69,11 +75,14 @@ class ProductListAPIView(generics.ListAPIView):
     """
 
     permission_classes = [AllowAny]
-    pagination_class = ProductCursorPagination
+    throttle_classes = [AnonRateThrottle]
+    pagination_class = ProductLimitOffsetPagination
     serializer_class = ProductListSerializer
-    filter_backends = [DjangoFilterBackend, SearchFilter]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = ProductFilterSet
     search_fields = ["translations__name", "translations__description"]
+    ordering_fields = ["min_price", "created_at"]
+    ordering = ["-created_at"]
 
     def get_queryset(self):
         qs = (
@@ -111,9 +120,7 @@ class ProductListAPIView(generics.ListAPIView):
             try:
                 attribute = Attribute.objects.get(slug=slug)
             except Attribute.DoesNotExist:
-                raise ValidationError(
-                    {"detail": f"Unknown attribute slug '{slug}'."}
-                )
+                continue
 
             values = self.request.query_params.getlist(raw_key) or [raw_value]
             value_qs = AttributeValue.objects.filter(
@@ -244,6 +251,7 @@ class CatalogSearchAPIView(generics.ListAPIView):
     """
     permission_classes = [AllowAny]
     serializer_class = ProductListSerializer
+    throttle_classes = [AnonRateThrottle]
 
     def get_serializer_context(self):
         context = super().get_serializer_context()

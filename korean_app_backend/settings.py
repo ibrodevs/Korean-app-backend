@@ -27,7 +27,6 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'oauth2_provider',
 
     'rest_framework',
     'rest_framework_simplejwt',  # Add this
@@ -39,7 +38,8 @@ INSTALLED_APPS = [
     'django_elasticsearch_dsl',
 
     'core',
-    'products'
+    'products',
+    'django_filters',
 ]
 
 MIDDLEWARE = [
@@ -88,7 +88,7 @@ if db_name.endswith('.sqlite3') or db_name.endswith('.sqlite'):
 else:
     print("Using PostgreSQL database")
     DATABASES = {
-         "default": {
+        "default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": os.getenv("DB_NAME", "korean_app"),
         "USER": os.getenv("DB_USER", "postgres"),
@@ -117,22 +117,41 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
-# REST Framework settings
 REST_FRAMEWORK = {
+    # Аутентификация
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-        'oauth2_provider.contrib.rest_framework.OAuth2Authentication',
     ),
+
     'DEFAULT_PERMISSION_CLASSES': (
-        # Allow any access by default - change this for production
         'rest_framework.permissions.AllowAny',
     ),
+
+    'DEFAULT_RENDERER_CLASSES': (
+        'rest_framework.renderers.JSONRenderer',
+    ),
+
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
-    'DEFAULT_THROTTLE_RATES':{
-        'login': "5/minute",
-    }
+
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',
+        'login': '5/minute',
+    },
+
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    ],
+
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
+    'PAGE_SIZE': 40,
 }
+
 
 CACHES = {
     "default": {
