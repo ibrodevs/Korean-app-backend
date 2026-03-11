@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager
-
+from products.models import ProductVariant
+from django.conf import settings
 
 
 class CustomUserManager(BaseUserManager):
@@ -76,4 +77,46 @@ class CustomUser(AbstractUser):
         verbose_name='user'
         verbose_name_plural='users'
 
-    
+
+
+class Cart(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="cart",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Cart of {self.user.email}"
+
+
+class CartItem(models.Model):
+    cart = models.ForeignKey(
+        Cart,
+        on_delete=models.CASCADE,
+        related_name="items",
+    )
+    variant = models.ForeignKey(
+        ProductVariant,
+        on_delete=models.CASCADE,
+        related_name="cart_items",
+    )
+    quantity = models.PositiveIntegerField(default=1)
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["cart", "variant"], name="unique_cart_variant")
+        ]
+        indexes = [
+            models.Index(fields=["cart", "variant"]),
+        ]
+
+    def __str__(self):
+        return f"{self.variant.sku} x {self.quantity}"
+
+    @property
+    def total_price(self):
+        return self.variant.price * self.quantity
