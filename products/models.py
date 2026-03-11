@@ -362,3 +362,6 @@ class ProductVariantMultiAttribute(models.Model):
 
     def __str__(self):
         return f"{self.variant} - {self.attribute}: {self.value}"
+
+
+
