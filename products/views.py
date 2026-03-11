@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 from django.views.decorators.cache import cache_page
 from django.utils.decorators import method_decorator
+from rest_framework_extensions.cache.decorators import cache_response
 
 from rest_framework.throttling import AnonRateThrottle
 
@@ -311,17 +312,19 @@ class CatalogSearchAPIView(generics.ListAPIView):
 
         # Pagination logic
         try:
-            page_size = int(params.get("page_size", 40))
+            limit = int(params.get("limit", 40))
+            if limit > 100:
+                limit = 100
         except ValueError:
-            page_size = 40
+            limit = 40
 
         try:
-            page_num = int(params.get("page", 1))
+            offset = int(params.get("offset", 0))
         except ValueError:
-            page_num = 1
+            offset = 0
 
-        start = (page_num - 1) * page_size
-        end = start + page_size
+        start = offset
+        end = start + limit
 
         search = search[start:end]
 
@@ -359,13 +362,14 @@ class CatalogSearchAPIView(generics.ListAPIView):
         base_url = request.build_absolute_uri(request.path)
 
         import urllib.parse
-        def get_page_url(pn):
+        def get_page_url(tgt_offset):
             query = request.query_params.copy()
-            query['page'] = pn
+            query['offset'] = tgt_offset
+            query['limit'] = limit
             return f"{base_url}?{urllib.parse.urlencode(query, doseq=True)}"
 
-        next_url = get_page_url(page_num + 1) if end < count else None
-        prev_url = get_page_url(page_num - 1) if page_num > 1 else None
+        next_url = get_page_url(offset + limit) if end < count else None
+        prev_url = get_page_url(max(0, offset - limit)) if offset > 0 else None
 
         return Response({
             "count": count,
@@ -456,7 +460,7 @@ class CategoryTreeAPIView(generics.ListAPIView):
         context["language"] = lang
         return context
 
-    @method_decorator(cache_page(60 * 60))   # ← ДОБАВИТЬ
+    @cache_response(timeout=60 * 60)   # ← ДОБАВИТЬ
     @extend_schema(
         summary="Дерево категорий",
         description="Возвращает дерево категорий со всеми переводами.",
@@ -479,7 +483,7 @@ class BrandListAPIView(generics.ListAPIView):
         context["language"] = lang
         return context
         
-    @method_decorator(cache_page(60 * 60))   # ← ДОБАВИТЬ
+    @cache_response(timeout=60 * 60)   # ← ДОБАВИТЬ
     @extend_schema(
         summary="Список брендов",
         description="Возвращает список брендов с переводами.",

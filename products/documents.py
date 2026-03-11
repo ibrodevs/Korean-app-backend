@@ -49,6 +49,7 @@ class ProductDocument(Document):
             'created_at',
         ]
         related_models = [ProductVariant]
+        queryset_pagination = 5000
 
     def get_queryset(self):
         return super().get_queryset().select_related(

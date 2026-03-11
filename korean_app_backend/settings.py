@@ -31,11 +31,13 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',  # Add this
     'rest_framework_simplejwt.token_blacklist',
+    'rest_framework_extensions',
     'corsheaders',  # Add this for handling CORS
     'drf_spectacular',
     'drf_spectacular_sidecar',
     'mptt',
     'django_elasticsearch_dsl',
+    'oauth2_provider',
 
     'core',
     'products',
@@ -121,6 +123,7 @@ REST_FRAMEWORK = {
     # Аутентификация
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'oauth2_provider.contrib.rest_framework.OAuth2Authentication',
     ),
 
     'DEFAULT_PERMISSION_CLASSES': (
@@ -140,6 +143,7 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'anon': '100/hour',
         'login': '5/minute',
+        'user': '100/minute',
     },
 
     'DEFAULT_FILTER_BACKENDS': [
