@@ -89,7 +89,12 @@ class ProductListAPIView(generics.ListAPIView):
         qs = (
             Product.objects.filter(is_active=True)
             .select_related("category", "brand")
-            .prefetch_related("translations", "images")
+            .prefetch_related(
+                "translations",
+                "images",
+                "category__translations",
+                "brand__translations",
+            )
         )
 
         # Dynamic EAV filters: attr_{slug}
@@ -221,6 +226,8 @@ class ProductDetailAPIView(generics.RetrieveAPIView):
         .prefetch_related(
             "translations",
             "images",
+            "category__translations",
+            "brand__translations",
             "variants__images",
             "variants__single_attributes__attribute",
             "variants__single_attributes__value__translations",
