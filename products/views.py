@@ -48,7 +48,7 @@ class ProductLimitOffsetPagination(LimitOffsetPagination):
 
 class ProductFilterSet(FilterSet):
     is_active = BooleanFilter(field_name="is_active")
-    category = CharFilter(field_name="category__slug")
+    category = CharFilter(method="filter_category")
     brand = CharFilter(field_name="brand__slug")
     price_min = CharFilter(method="filter_price_min")
     price_max = CharFilter(method="filter_price_max")
@@ -56,6 +56,24 @@ class ProductFilterSet(FilterSet):
     class Meta:
         model = Product
         fields = ["is_active", "category", "brand"]
+
+    def filter_category(self, queryset, name, value):
+        """Filter products by category slug.
+
+        Categories are hierarchical (MPTT). When a parent category slug is provided,
+        include products from all descendant categories as well.
+        """
+        value = (value or "").strip()
+        if not value:
+            return queryset
+
+        try:
+            category = Category.objects.get(slug=value)
+        except Category.DoesNotExist:
+            return queryset.none()
+
+        subtree = category.get_descendants(include_self=True)
+        return queryset.filter(category__in=subtree)
 
     def filter_price_min(self, queryset, name, value):
         try:
