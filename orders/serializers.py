@@ -1,6 +1,28 @@
 from rest_framework import serializers
 
-from .models import Order, OrderItem
+from .models import Order, OrderItem, PickupLocation
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PickupLocation
+# ─────────────────────────────────────────────────────────────────────────────
+
+class PickupLocationSerializer(serializers.ModelSerializer):
+    """Read-only serializer for active pickup locations (used in list endpoint)."""
+
+    class Meta:
+        model = PickupLocation
+        fields = [
+            "id",
+            "city",
+            "name",
+            "address",
+            "address_line2",
+            "latitude",
+            "longitude",
+            "phone",
+            "working_hours",
+        ]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -77,6 +99,11 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             "postal_code",
             "full_address",
             "delivery_comment",
+            # pickup
+            "pickup_location",
+            "pickup_location_name",
+            "pickup_city",
+            "pickup_address",
             # money
             "subtotal",
             "shipping_cost",
@@ -108,14 +135,51 @@ class CheckoutSerializer(serializers.Serializer):
     first_name = serializers.CharField(max_length=150)
     last_name = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
 
-    city = serializers.CharField(max_length=120)
-    address_line1 = serializers.CharField(max_length=255)
+    city = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
+    address_line1 = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
     address_line2 = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
     postal_code = serializers.CharField(max_length=30, required=False, allow_blank=True, default="")
     delivery_comment = serializers.CharField(required=False, allow_blank=True, default="")
 
     delivery_method = serializers.ChoiceField(choices=Order.DeliveryMethod.choices)
     payment_method = serializers.ChoiceField(choices=Order.PaymentMethod.choices)
+
+    # Optional for courier, required for pickup — validated in validate()
+    pickup_location_id = serializers.PrimaryKeyRelatedField(
+        queryset=PickupLocation.objects.filter(is_active=True),
+        required=False,
+        allow_null=True,
+        default=None,
+    )
+
+    def validate(self, data):
+        delivery = data.get("delivery_method")
+        pickup_loc = data.get("pickup_location_id")
+
+        if delivery == Order.DeliveryMethod.PICKUP:
+            if not pickup_loc:
+                raise serializers.ValidationError({
+                    "pickup_location_id": "This field is required when delivery_method is 'pickup'."
+                })
+            # Location must be active (queryset already filters, but be explicit)
+            if not pickup_loc.is_active:
+                raise serializers.ValidationError({
+                    "pickup_location_id": "The selected pickup location is currently inactive."
+                })
+
+        if delivery == Order.DeliveryMethod.COURIER and pickup_loc:
+            raise serializers.ValidationError({
+                "pickup_location_id": "Pickup location must be empty for courier delivery."
+            })
+
+        # For courier delivery, city and address_line1 are required
+        if delivery == Order.DeliveryMethod.COURIER:
+            if not data.get("city"):
+                raise serializers.ValidationError({"city": "This field is required for courier delivery."})
+            if not data.get("address_line1"):
+                raise serializers.ValidationError({"address_line1": "This field is required for courier delivery."})
+
+        return data
 
 
 class OrderCancelSerializer(serializers.Serializer):

@@ -5,14 +5,37 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Order
+from .models import Order, PickupLocation
 from .serializers import (
     CheckoutSerializer,
     OrderCancelSerializer,
     OrderDetailSerializer,
     OrderListSerializer,
+    PickupLocationSerializer,
 )
 from .services import cancel_order, create_order_from_cart
+
+
+# ───────────────────────────────────────────────────────────────────────────────
+# GET /orders/pickup-locations/
+# ───────────────────────────────────────────────────────────────────────────────
+
+class PickupLocationListAPIView(generics.ListAPIView):
+    """
+    Return all active pickup points sorted by sort_order, city, name.
+    Frontend uses this to build the pickup-location selector at checkout.
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = PickupLocationSerializer
+    queryset = PickupLocation.objects.filter(is_active=True)
+
+    @extend_schema(
+        summary="List active pickup locations",
+        responses={200: PickupLocationSerializer(many=True)},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────

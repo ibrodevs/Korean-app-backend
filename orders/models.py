@@ -12,6 +12,56 @@ from products.models import ProductVariant
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# PickupLocation
+# ─────────────────────────────────────────────────────────────────────────────
+
+class PickupLocation(models.Model):
+    """
+    A physical self-pickup point that customers can choose at checkout.
+
+    The Order model stores a live FK to this model and also snapshots
+    the name, city, and address so historical orders remain correct even if
+    the pickup point is later renamed, moved, or deleted.
+    """
+
+    city = models.CharField(max_length=120, verbose_name="City")
+    name = models.CharField(max_length=255, verbose_name="Pickup point name")
+    address = models.CharField(max_length=255, verbose_name="Address")
+    address_line2 = models.CharField(max_length=255, blank=True, verbose_name="Address line 2")
+
+    latitude = models.DecimalField(
+        max_digits=9, decimal_places=6,
+        null=True, blank=True,
+        verbose_name="Latitude",
+    )
+    longitude = models.DecimalField(
+        max_digits=9, decimal_places=6,
+        null=True, blank=True,
+        verbose_name="Longitude",
+    )
+
+    phone = models.CharField(max_length=50, blank=True, verbose_name="Phone")
+    working_hours = models.CharField(max_length=255, blank=True, verbose_name="Working hours")
+
+    is_active = models.BooleanField(default=True, db_index=True, verbose_name="Is active")
+    sort_order = models.PositiveIntegerField(default=0, verbose_name="Sort order")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Pickup location"
+        verbose_name_plural = "Pickup locations"
+        ordering = ["sort_order", "city", "name"]
+        indexes = [
+            models.Index(fields=["city", "is_active"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.city} — {self.name}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Manager
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -114,6 +164,26 @@ class Order(models.Model):
         verbose_name="Delivery method",
     )
 
+    # ── Pickup location ───────────────────────────────────────────────────────
+    pickup_location = models.ForeignKey(
+        "PickupLocation",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="orders",
+        verbose_name="Pickup location",
+    )
+    # Snapshot fields — immutable once order is created
+    pickup_location_name = models.CharField(
+        max_length=255, blank=True, verbose_name="Pickup location name (snapshot)"
+    )
+    pickup_city = models.CharField(
+        max_length=120, blank=True, verbose_name="Pickup city (snapshot)"
+    )
+    pickup_address = models.CharField(
+        max_length=255, blank=True, verbose_name="Pickup address (snapshot)"
+    )
+
     # ── Customer snapshot ─────────────────────────────────────────────────────
     customer_email = models.EmailField(verbose_name="Customer email")
     customer_phone = models.CharField(max_length=50, verbose_name="Customer phone")
@@ -122,8 +192,10 @@ class Order(models.Model):
 
     # ── Shipping snapshot ─────────────────────────────────────────────────────
     country = models.CharField(max_length=120, default="Kyrgyzstan", verbose_name="Country")
-    city = models.CharField(max_length=120, verbose_name="City")
-    address_line1 = models.CharField(max_length=255, verbose_name="Address line 1")
+    # blank=True because for pickup orders these are auto-filled from PickupLocation in save();
+    # courier delivery enforces non-blank via clean().
+    city = models.CharField(max_length=120, blank=True, verbose_name="City")
+    address_line1 = models.CharField(max_length=255, blank=True, verbose_name="Address line 1")
     address_line2 = models.CharField(max_length=255, blank=True, verbose_name="Address line 2")
     postal_code = models.CharField(max_length=30, blank=True, verbose_name="Postal code")
     delivery_comment = models.TextField(blank=True, verbose_name="Delivery comment")
@@ -220,6 +292,32 @@ class Order(models.Model):
                 "payment_status": "A paid order must have a paid_at timestamp."
             })
 
+        # Pickup / courier cross-validation
+        is_pickup = self.delivery_method == self.DeliveryMethod.PICKUP
+        has_location = bool(self.pickup_location_id)
+
+        if is_pickup and not has_location:
+            raise ValidationError({
+                "pickup_location": "A pickup location is required when delivery method is 'pickup'."
+            })
+
+        if not is_pickup and has_location:
+            raise ValidationError({
+                "pickup_location": "Pickup location must be empty for courier delivery."
+            })
+
+        # For courier, city and address_line1 are mandatory.
+        # For pickup, they are auto-filled from the PickupLocation in save(),
+        # so we skip this check (they may legitimately be blank at clean() time).
+        if not is_pickup:
+            address_errors: dict[str, str] = {}
+            if not self.city:
+                address_errors["city"] = "City is required for courier delivery."
+            if not self.address_line1:
+                address_errors["address_line1"] = "Address line 1 is required for courier delivery."
+            if address_errors:
+                raise ValidationError(address_errors)
+
     # ── Persistence ───────────────────────────────────────────────────────────
 
     @staticmethod
@@ -260,6 +358,20 @@ class Order(models.Model):
             self.paid_at = now
 
     def save(self, *args, **kwargs) -> None:
+        # ── Auto-snapshot pickup location address ─────────────────────────────
+        # Only on first save (new order) so the snapshot stays immutable.
+        if not self.pk and self.delivery_method == self.DeliveryMethod.PICKUP:
+            loc = self.pickup_location
+            if loc:
+                self.pickup_location_name = self.pickup_location_name or loc.name
+                self.pickup_city = self.pickup_city or loc.city
+                self.pickup_address = self.pickup_address or loc.address
+                # Also fill standard shipping snapshot fields if blank
+                if not self.city:
+                    self.city = loc.city
+                if not self.address_line1:
+                    self.address_line1 = loc.address
+
         if not self.order_number:
             # Crypto-safe generation with collision retry
             candidate = self.generate_order_number()

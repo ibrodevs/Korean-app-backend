@@ -5,9 +5,13 @@ from .views import (
     MyOrderListAPIView,
     OrderCancelAPIView,
     OrderCheckoutAPIView,
+    PickupLocationListAPIView,
 )
 
 urlpatterns = [
+    # GET  — list active pickup locations (used at checkout)
+    path("pickup-locations/", PickupLocationListAPIView.as_view(), name="pickup-location-list"),
+
     # POST — create order from cart
     path("checkout/", OrderCheckoutAPIView.as_view(), name="order-checkout"),
 

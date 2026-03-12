@@ -102,13 +102,14 @@ def create_order_from_cart(*, user: "CustomUser", data: dict) -> Order:
         customer_phone=data["customer_phone"],
         first_name=data["first_name"],
         last_name=data.get("last_name", ""),
-        city=data["city"],
-        address_line1=data["address_line1"],
+        city=data.get("city", ""),
+        address_line1=data.get("address_line1", ""),
         address_line2=data.get("address_line2", ""),
         postal_code=data.get("postal_code", ""),
         delivery_method=data["delivery_method"],
         payment_method=data["payment_method"],
         delivery_comment=data.get("delivery_comment", ""),
+        pickup_location=data.get("pickup_location_id"),  # PickupLocation instance or None
     )
 
     # ── 4. Bulk-create OrderItems ─────────────────────────────────────────────

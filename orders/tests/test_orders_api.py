@@ -53,7 +53,7 @@ Coverage:
     test_service_update_order_status_records_history           (39)
     test_service_update_payment_status_auto_confirms           (40)
 
-Total: 40 tests + 10 edge-case tests = 50 tests
+Total: 40 + 24 edge-case + 11 pickup = 75 tests
 """
 from decimal import Decimal
 
@@ -62,7 +62,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from core.models import Cart, CartItem, CustomUser
-from orders.models import Order, OrderItem, OrderStatusHistory
+from orders.models import Order, OrderItem, OrderStatusHistory, PickupLocation
 from orders.services import update_order_status, update_payment_status
 from products.models import Category, Product, ProductTranslation, ProductVariant
 
@@ -72,6 +72,7 @@ from products.models import Category, Product, ProductTranslation, ProductVarian
 
 CHECKOUT_URL = "/api/v1/orders/checkout/"
 LIST_URL = "/api/v1/orders/"
+PICKUP_LOCATIONS_URL = "/api/v1/orders/pickup-locations/"
 
 
 def order_detail_url(pk):
@@ -850,3 +851,203 @@ class TestMoneyFieldFormat(OrdersBaseTest):
         self.assertRegex(res.data["subtotal"], r"^\d+\.\d{2}$")
         self.assertRegex(res.data["shipping_cost"], r"^\d+\.\d{2}$")
         self.assertRegex(res.data["discount_amount"], r"^\d+\.\d{2}$")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers for pickup tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+def make_pickup_location(
+    city="Bishkek",
+    name="Main Office",
+    address="Chui Ave 100",
+    is_active=True,
+    sort_order=0,
+):
+    """Factory helper to create a PickupLocation instance."""
+    return PickupLocation.objects.create(
+        city=city,
+        name=name,
+        address=address,
+        is_active=is_active,
+        sort_order=sort_order,
+    )
+
+
+PICKUP_CHECKOUT_PAYLOAD = {
+    "customer_phone": "+996700000001",
+    "first_name": "Адиль",
+    "delivery_method": "pickup",
+    "payment_method": "cash",
+    # pickup_location_id injected in each test
+}
+
+
+# =============================================================================
+# 14.  PICKUP LOCATION LIST
+# =============================================================================
+
+class TestPickupLocationList(OrdersBaseTest):
+    """GET /api/v1/orders/pickup-locations/"""
+
+    def test_list_returns_200(self):
+        """Returns 200 with active locations."""
+        make_pickup_location(name="Point A")
+        res = self.client.get(PICKUP_LOCATIONS_URL)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+    def test_list_returns_active_locations_only(self):
+        """Inactive locations are excluded from the response."""
+        active = make_pickup_location(name="Active", is_active=True)
+        make_pickup_location(name="Inactive", is_active=False)
+        res = self.client.get(PICKUP_LOCATIONS_URL)
+        results = res.data.get("results", res.data)
+        names = [r["name"] for r in results]
+        self.assertIn(active.name, names)
+        self.assertNotIn("Inactive", names)
+
+    def test_list_excludes_inactive_entirely(self):
+        """Response count matches only active locations."""
+        make_pickup_location(is_active=True)
+        make_pickup_location(name="Off", is_active=False)
+        res = self.client.get(PICKUP_LOCATIONS_URL)
+        results = res.data.get("results", res.data)
+        self.assertEqual(len(results), 1)
+
+    def test_list_requires_auth(self):
+        """Unauthenticated request → 401."""
+        self.client.force_authenticate(user=None)
+        res = self.client.get(PICKUP_LOCATIONS_URL)
+        self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_list_contains_expected_fields(self):
+        """Each location object has id, city, name, address, lat/lon, phone, working_hours."""
+        make_pickup_location(name="Central")
+        res = self.client.get(PICKUP_LOCATIONS_URL)
+        results = res.data.get("results", res.data)
+        expected_keys = {"id", "city", "name", "address", "latitude", "longitude",
+                         "phone", "working_hours"}
+        self.assertTrue(expected_keys.issubset(results[0].keys()))
+
+
+# =============================================================================
+# 15.  CHECKOUT WITH PICKUP
+# =============================================================================
+
+class TestCheckoutPickup(OrdersBaseTest):
+    """Checkout edge cases specific to delivery_method=pickup."""
+
+    def setUp(self):
+        super().setUp()
+        self.pickup = make_pickup_location()
+
+    def _pickup_payload(self, location_id=None):
+        payload = {**PICKUP_CHECKOUT_PAYLOAD}
+        if location_id is not None:
+            payload["pickup_location_id"] = location_id
+        return payload
+
+    def test_pickup_without_location_returns_400(self):
+        """delivery_method=pickup without pickup_location_id → 400."""
+        res = self.checkout(self._pickup_payload())
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("pickup_location_id", str(res.data))
+
+    def test_pickup_with_valid_location_returns_201(self):
+        """delivery_method=pickup with valid active location → 201."""
+        res = self.checkout(self._pickup_payload(self.pickup.pk))
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+
+    def test_pickup_order_has_correct_delivery_method(self):
+        """Created order carries delivery_method=pickup."""
+        self.checkout(self._pickup_payload(self.pickup.pk))
+        order = Order.objects.get(user=self.user)
+        self.assertEqual(order.delivery_method, Order.DeliveryMethod.PICKUP)
+
+    def test_pickup_snapshots_location_name(self):
+        """pickup_location_name on Order matches the chosen location’s name."""
+        self.checkout(self._pickup_payload(self.pickup.pk))
+        order = Order.objects.get(user=self.user)
+        self.assertEqual(order.pickup_location_name, self.pickup.name)
+
+    def test_pickup_snapshots_location_city(self):
+        """pickup_city on Order matches the chosen location’s city."""
+        self.checkout(self._pickup_payload(self.pickup.pk))
+        order = Order.objects.get(user=self.user)
+        self.assertEqual(order.pickup_city, self.pickup.city)
+
+    def test_pickup_snapshots_location_address(self):
+        """pickup_address on Order matches the chosen location’s address."""
+        self.checkout(self._pickup_payload(self.pickup.pk))
+        order = Order.objects.get(user=self.user)
+        self.assertEqual(order.pickup_address, self.pickup.address)
+
+    def test_courier_with_pickup_location_returns_400(self):
+        """delivery_method=courier + pickup_location_id provided → 400."""
+        payload = {
+            **VALID_CHECKOUT_PAYLOAD,
+            "pickup_location_id": self.pickup.pk,
+        }
+        res = self.checkout(payload)
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("pickup_location_id", str(res.data))
+
+    def test_pickup_with_inactive_location_returns_400(self):
+        """Inactive pickup location → 400 (not a valid choice)."""
+        inactive = make_pickup_location(name="Closed", is_active=False)
+        res = self.checkout(self._pickup_payload(inactive.pk))
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_courier_without_city_returns_400(self):
+        """delivery_method=courier without city → 400."""
+        payload = {
+            "customer_phone": "+996700000001",
+            "first_name": "Адиль",
+            "address_line1": "Manas 10",
+            "delivery_method": "courier",
+            "payment_method": "cash",
+            # city intentionally omitted
+        }
+        res = self.checkout(payload)
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("city", str(res.data))
+
+
+# =============================================================================
+# 16.  PICKUP LOCATION SNAPSHOT IMMUTABILITY
+# =============================================================================
+
+class TestPickupLocationSnapshot(OrdersBaseTest):
+    """Changing or deleting a PickupLocation after checkout must not update the snapshot."""
+
+    def setUp(self):
+        super().setUp()
+        self.pickup = make_pickup_location(name="Original Name", city="Bishkek", address="Chui 1")
+        payload = {**PICKUP_CHECKOUT_PAYLOAD, "pickup_location_id": self.pickup.pk}
+        self.checkout(payload)
+        self.order = Order.objects.get(user=self.user)
+
+    def test_snapshot_name_preserved_after_location_rename(self):
+        """Renaming a location does not alter order.pickup_location_name."""
+        self.pickup.name = "Renamed Location"
+        self.pickup.save()
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.pickup_location_name, "Original Name")
+
+    def test_snapshot_address_preserved_after_location_move(self):
+        """Changing a location’s address does not alter order.pickup_address."""
+        self.pickup.address = "New Address 999"
+        self.pickup.save()
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.pickup_address, "Chui 1")
+
+    def test_snapshot_preserved_after_location_deleted(self):
+        """
+        Deleting the pickup location sets FK to NULL (SET_NULL)
+        but snapshot fields remain intact.
+        """
+        self.pickup.delete()
+        self.order.refresh_from_db()
+        self.assertIsNone(self.order.pickup_location)  # FK is gone
+        self.assertEqual(self.order.pickup_location_name, "Original Name")  # snapshot intact
+        self.assertEqual(self.order.pickup_address, "Chui 1")
