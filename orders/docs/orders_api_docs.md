@@ -12,6 +12,7 @@ All endpoints require authentication. Users can only access their own orders.
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
+| `/pickup-locations/` | GET | List active pickup points |
 | `/checkout/` | POST | Create order from cart |
 | `/` | GET | List my orders |
 | `/{id}/` | GET | Get order details |
@@ -19,7 +20,7 @@ All endpoints require authentication. Users can only access their own orders.
 
 ---
 
-## 📋 Order Statuses
+## 📋 Enums
 
 ### Order Status
 | Status | Description | Can Customer Cancel? |
@@ -59,6 +60,21 @@ All endpoints require authentication. Users can only access their own orders.
 
 ## 📦 Response Objects
 
+### PickupLocation
+```json
+{
+  "id": 3,
+  "city": "Bishkek",
+  "name": "Main Office",
+  "address": "Chui Ave 100",
+  "address_line2": "",
+  "latitude": "42.870000",
+  "longitude": "74.590000",
+  "phone": "+996312000001",
+  "working_hours": "Mon–Sat 09:00–20:00"
+}
+```
+
 ### OrderItem (inside order details)
 ```json
 {
@@ -70,7 +86,7 @@ All endpoints require authentication. Users can only access their own orders.
   "line_total": "10000.00"
 }
 ```
-> ⚠️ These are **snapshots** - product changes after order won't affect this!
+> ⚠️ These are **snapshots** — product changes after order won't affect this!
 
 ### OrderListItem (list view)
 ```json
@@ -81,7 +97,7 @@ All endpoints require authentication. Users can only access their own orders.
   "status": "pending",
   "payment_status": "unpaid",
   "payment_method": "mbank",
-  "delivery_method": "courier",
+  "delivery_method": "pickup",
   "total_amount": "10300.00",
   "total_items": 2,
   "created_at": "2026-03-12T08:15:00Z"
@@ -96,8 +112,8 @@ All endpoints require authentication. Users can only access their own orders.
   "order_number": "ORD-20260312-847291",
   "status": "pending",
   "payment_status": "unpaid",
-  "payment_method": "mbank",
-  "delivery_method": "courier",
+  "payment_method": "cash",
+  "delivery_method": "pickup",
 
   "customer_email": "user@example.com",
   "customer_phone": "+996700000001",
@@ -107,16 +123,21 @@ All endpoints require authentication. Users can only access their own orders.
 
   "country": "Kyrgyzstan",
   "city": "Bishkek",
-  "address_line1": "Manas 10",
+  "address_line1": "Chui Ave 100",
   "address_line2": "",
   "postal_code": "",
-  "full_address": "Bishkek, Manas 10",
+  "full_address": "Bishkek, Chui Ave 100",
   "delivery_comment": "",
 
+  "pickup_location": 3,
+  "pickup_location_name": "Main Office",
+  "pickup_city": "Bishkek",
+  "pickup_address": "Chui Ave 100",
+
   "subtotal": "10000.00",
-  "shipping_cost": "300.00",
+  "shipping_cost": "0.00",
   "discount_amount": "0.00",
-  "total_amount": "10300.00",
+  "total_amount": "10000.00",
 
   "notes": "",
   "total_items": 1,
@@ -143,17 +164,48 @@ All endpoints require authentication. Users can only access their own orders.
 ```
 
 > 💡 **Note:** All money fields are strings with 2 decimals: `"5000.00"`  
-> All timestamps are ISO 8601 UTC: `"2026-03-12T08:15:00Z"`
+> All timestamps are ISO 8601 UTC or `null`.
 
 ---
 
-## 🛒 1. Create Order from Cart
+## 📍 1. List Pickup Locations
+
+**`GET /api/v1/orders/pickup-locations/`**
+
+Returns all **active** pickup points, sorted by `sort_order → city → name`.  
+Call this before the checkout screen to populate the pickup selector.
+
+### Response 200 OK
+```json
+[
+  {
+    "id": 3,
+    "city": "Bishkek",
+    "name": "Main Office",
+    "address": "Chui Ave 100",
+    "address_line2": "",
+    "latitude": "42.870000",
+    "longitude": "74.590000",
+    "phone": "+996312000001",
+    "working_hours": "Mon–Sat 09:00–20:00"
+  }
+]
+```
+
+| Code | Description |
+|------|-------------|
+| 200 | List of active locations (may be empty `[]`) |
+| 401 | Not authenticated |
+
+---
+
+## 🛒 2. Create Order from Cart
 
 **`POST /api/v1/orders/checkout/`**
 
 Creates order from your cart. Does **everything atomically**: validates, snapshots products, deducts stock, clears cart.
 
-### Request Body
+### Request Body — Courier delivery
 ```json
 {
   "customer_phone": "+996700000001",
@@ -169,23 +221,49 @@ Creates order from your cart. Does **everything atomically**: validates, snapsho
 }
 ```
 
-| Field | Required | Notes |
-|-------|:--------:|-------|
-| `customer_phone` | ✅ | max 50 chars |
-| `first_name` | ✅ | max 150 chars |
-| `last_name` | ❌ | defaults to `""` |
-| `city` | ✅ | max 120 chars |
-| `address_line1` | ✅ | max 255 chars |
-| `address_line2` | ❌ | defaults to `""` |
-| `postal_code` | ❌ | max 30 chars |
-| `delivery_comment` | ❌ | free text |
-| `delivery_method` | ✅ | `courier` or `pickup` |
-| `payment_method` | ✅ | `cash`, `card`, `mbank`, `elqr` |
+### Request Body — Pickup delivery
+```json
+{
+  "customer_phone": "+996700000001",
+  "first_name": "Адиль",
+  "delivery_method": "pickup",
+  "pickup_location_id": 3,
+  "payment_method": "cash"
+}
+```
+
+> For `pickup`, `city` and `address_line1` are **optional** — they are auto-filled from the pickup location.
+
+### Field Reference
+
+| Field | Required | Condition | Notes |
+|-------|:--------:|-----------|-------|
+| `customer_phone` | ✅ | always | max 50 chars |
+| `first_name` | ✅ | always | max 150 chars |
+| `last_name` | ❌ | — | defaults to `""` |
+| `city` | ✅ | `courier` only | auto-filled for `pickup` |
+| `address_line1` | ✅ | `courier` only | auto-filled for `pickup` |
+| `address_line2` | ❌ | — | defaults to `""` |
+| `postal_code` | ❌ | — | max 30 chars |
+| `delivery_comment` | ❌ | — | free text |
+| `delivery_method` | ✅ | always | `courier` or `pickup` |
+| `pickup_location_id` | ✅ | `pickup` only | must be an active location ID |
+| `payment_method` | ✅ | always | `cash`, `card`, `mbank`, `elqr` |
+
+### Validation Rules
+
+| Case | Error |
+|------|-------|
+| `delivery_method: pickup` + no `pickup_location_id` | `400` — `pickup_location_id` required |
+| `delivery_method: pickup` + inactive location | `400` — location is inactive |
+| `delivery_method: courier` + `pickup_location_id` provided | `400` — must be empty for courier |
+| `delivery_method: courier` + no `city` | `400` — city required |
+| `delivery_method: courier` + no `address_line1` | `400` — address required |
 
 ### Responses
 
-**✅ 201 Created**
-Returns full `OrderDetail` object
+**✅ 201 Created**  
+Returns full `OrderDetail` object (including `pickup_location`, `pickup_location_name`, `pickup_city`, `pickup_address` for pickup orders)
 
 **❌ 400 Bad Request**
 ```json
@@ -195,15 +273,15 @@ Returns full `OrderDetail` object
 // Stock issue
 {
   "detail": [
-    "'SKU-CREAM-100ML': only 3 in stock (requested 5).",
-    "'SKU-MASK-OLD': is no longer available."
+    "'SKU-CREAM-100ML': only 3 in stock (requested 5)."
   ]
 }
 
-// Field error
-{
-  "delivery_method": ["\"teleport\" is not a valid choice."]
-}
+// Pickup without location
+{ "pickup_location_id": ["This field is required when delivery_method is 'pickup'."] }
+
+// Courier + pickup_location_id provided
+{ "pickup_location_id": ["Pickup location must be empty for courier delivery."] }
 ```
 
 **❌ 401 Unauthorized**
@@ -215,7 +293,7 @@ Returns full `OrderDetail` object
 
 ---
 
-## 📋 2. List My Orders
+## 📋 3. List My Orders
 
 **`GET /api/v1/orders/`**
 
@@ -230,7 +308,7 @@ Paginated list, newest first.
 ### Response 200 OK
 ```json
 {
-  "count": 2,
+  "count": 1,
   "next": null,
   "previous": null,
   "results": [
@@ -241,7 +319,7 @@ Paginated list, newest first.
       "status": "delivered",
       "payment_status": "paid",
       "payment_method": "card",
-      "delivery_method": "courier",
+      "delivery_method": "pickup",
       "total_amount": "7500.00",
       "total_items": 3,
       "created_at": "2026-03-10T12:00:00Z"
@@ -252,11 +330,10 @@ Paginated list, newest first.
 
 ---
 
-## 🔍 3. Get Order Details
+## 🔍 4. Get Order Details
 
 **`GET /api/v1/orders/{id}/`**
 
-### Responses
 | Code | Description |
 |------|-------------|
 | 200 | Full `OrderDetail` object |
@@ -265,7 +342,7 @@ Paginated list, newest first.
 
 ---
 
-## ❌ 4. Cancel Order
+## ❌ 5. Cancel Order
 
 **`POST /api/v1/orders/{id}/cancel/`**
 
@@ -284,7 +361,7 @@ Cancels order if status is `pending` or `confirmed`. Restores stock.
 
 ### Responses
 
-**✅ 200 OK**
+**✅ 200 OK**  
 Returns updated `OrderDetail` with `status: "canceled"`
 
 **❌ 400 Bad Request**
@@ -294,7 +371,7 @@ Returns updated `OrderDetail` with `status: "canceled"`
 }
 ```
 
-**❌ 404 Not Found** - Not your order or doesn't exist  
+**❌ 404 Not Found** — Not your order or doesn't exist  
 **❌ 401 Unauthorized**
 
 > ⚠️ **Idempotent:** Second cancel attempt on canceled order returns 400, stock not restored twice.
@@ -323,7 +400,7 @@ pending → confirmed → processing → shipped → delivered → [done]
 ```json
 {
   "delivery_method": ["\"teleport\" is not a valid choice."],
-  "city": ["This field is required."]
+  "city": ["City is required for courier delivery."]
 }
 ```
 
@@ -355,7 +432,16 @@ pending → confirmed → processing → shipped → delivered → [done]
 
 ## 💡 Key Design Points
 
-### 📸 Snapshots
+### 📍 Pickup Location Snapshot
+When `delivery_method: "pickup"`, the order stores both:
+- **Live FK** `pickup_location` (set to `null` if the point is deleted — `SET_NULL`)
+- **Snapshot fields** `pickup_location_name`, `pickup_city`, `pickup_address` — immutable after creation
+
+This means historical orders always show the correct address even if the pickup point is renamed or deleted later.
+
+Also, `city` and `address_line1` are auto-filled from the pickup location so that every order has a consistent address regardless of delivery method.
+
+### 📸 Product Snapshots
 Order items store product data **at time of purchase**:
 - `product_name` from translation (prefers Russian)
 - `sku` from variant
@@ -378,92 +464,8 @@ All money = `Decimal` with 2 decimal places (no float errors)
 ### 🛡️ Security
 - All endpoints require JWT
 - Can only see your own orders
-- Accessing others' orders returns `404` (not `403`) - prevents ID guessing
+- Accessing others' orders returns `404` (not `403`) — prevents order ID enumeration
 
 ### 🔢 Order Number Format
 `ORD-YYYYMMDD-XXXXXX`  
 Example: `ORD-20260312-847291`
-
----
-
-# how to simulate a payment:
-
-As a **frontend developer** working with this Orders API, you usually **cannot fully simulate a real payment** (especially for `mbank` or `elqr`) because those are external mobile banking / QR systems — the backend most likely **does not** change `payment_status` to `paid` automatically after `/checkout/`.
-
-Here are the **realistic ways** frontend developers usually handle "payment simulation / testing" in such projects (ranked from most common → least common):
-
-| # | Method                              | How realistic? | Changes `payment_status`? | Best for                  | Effort |
-|---|-------------------------------------|----------------|----------------------------|---------------------------|--------|
-| 1 | Use **cash** payment method         | Very high      | Usually auto → `paid`      | Fastest day-to-day testing| ★☆☆☆☆ |
-| 2 | Ask backend dev for **test / force-pay** endpoint or admin action | Highest        | Yes                        | Most convenient long-term | ★★☆☆☆ |
-| 3 | Create order with `mbank`/`elqr` → wait / ask backend to mark paid manually | Medium         | Yes (after manual action)  | Realistic flow testing    | ★★★☆☆ |
-| 4 | Create order → use `/cancel/` → create again (to test lifecycle) | Low            | No                         | Status & cancel testing   | ★★☆☆☆ |
-| 5 | Mock the entire API response in frontend (MSW, MirageJS, etc.) | Very low       | Only in your browser       | UI/development before backend ready | ★★★★☆ |
-
-### Most Practical Approaches Right Now
-
-#### 1. Just use `payment_method: "cash"` (recommended for 90% of frontend work)
-
-```jsonc
-// POST /api/v1/orders/checkout/
-{
-  "customer_phone":   "+996700000001",
-  "first_name":       "Адил",
-  "last_name":        "Тест",
-  "city":             "Bishkek",
-  "address_line1":    "Test street 123",
-  "delivery_method":  "courier",
-  "payment_method":   "cash"          // ← key line
-}
-```
-
-Many Kyrgyz / Central Asian shops treat **cash on delivery** as the "default testable" method.
-
-Very often the backend automatically sets:
-
-```json
-payment_status: "paid",
-paid_at:        "2026-03-12T08:45:00Z",
-status:         "confirmed"   // or at least "pending"
-```
-
-→ You immediately see a "paid" order and can test further steps (list, detail, cancel if still allowed).
-
-#### 2. Agree with backend developer on quick simulation helpers
-
-Ask for one of these (choose 1–2 that are easiest for them):
-
-- **Admin endpoint** (only you or test users can call)
-  - `POST /api/v1/orders/{id}/simulate-pay/`
-  - Body: `{ "payment_method": "mbank" }` or just empty
-  - Sets `payment_status: "paid"`, `paid_at`, maybe moves `status` to `confirmed`
-
-- **Magic test phone number** or **test email**
-  - If you send `customer_phone: "+996999999999"` → auto-paid
-
-- **Query param cheat code** (only in dev/staging)
-  - `POST /api/v1/orders/checkout/?test=auto_pay`
-
-- **Delayed auto-pay in dev** — after 10–30 seconds backend marks it paid
-
-#### 3. Realistic flow for `mbank` / `elqr` (what you’ll show QA / PO)
-
-1. Create order with `"payment_method": "mbank"`
-2. Get 201 → see `payment_status: "unpaid"` in detail
-3. Show beautiful "Pay with MBank" screen (or QR if you have it)
-4. **Manually** ask backend colleague (or click admin button if exists):
-   - "Please mark order #ORD-20260312-XXXX as paid via mbank"
-5. Refresh order detail → see `paid`, `confirmed`, etc.
-
-This is how most teams test external payment methods before real integration.
-
-#### Quick summary – what to do today
-
-Do this in this order:
-
-1. Try creating with `"payment_method": "cash"` → check if `payment_status` becomes `"paid"` automatically
-2. If yes → use it for almost everything (fastest)
-3. If no → create orders with `mbank` / `elqr` and coordinate with backend to mark 1–2 test orders as paid when you need to test paid flow / cancel restriction / delivered flow
-4. Ask backend: "Can we add a quick `/simulate-pay/` endpoint or magic phone number for frontend testing?"
-
-Good luck with the checkout flow — Kyrgyz e-commerce projects usually live on `cash` + `mbank` for quite a long time 😄
