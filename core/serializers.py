@@ -147,3 +147,40 @@ class CartSerializer(serializers.ModelSerializer):
 
     def get_total_price(self, obj):
         return sum(item.variant.price * item.quantity for item in obj.items.all())
+
+
+# --- Bulk serializers ---
+
+class BulkCartItemCreateItemSerializer(serializers.Serializer):
+    variant_id = serializers.IntegerField()
+    quantity = serializers.IntegerField(min_value=1)
+
+
+class BulkCartItemCreateSerializer(serializers.Serializer):
+    items = BulkCartItemCreateItemSerializer(many=True)
+
+    def validate_items(self, value):
+        if not value:
+            raise serializers.ValidationError("Список товаров не может быть пустым.")
+        return value
+
+
+class BulkCartItemUpdateItemSerializer(serializers.Serializer):
+    item_id = serializers.IntegerField()
+    quantity = serializers.IntegerField(min_value=1)
+
+
+class BulkCartItemUpdateSerializer(serializers.Serializer):
+    items = BulkCartItemUpdateItemSerializer(many=True)
+
+    def validate_items(self, value):
+        if not value:
+            raise serializers.ValidationError("Список товаров не может быть пустым.")
+        return value
+
+
+class BulkCartItemDeleteSerializer(serializers.Serializer):
+    item_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        allow_empty=False,
+    )

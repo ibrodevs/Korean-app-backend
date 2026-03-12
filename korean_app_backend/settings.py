@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'mptt',
     'django_elasticsearch_dsl',
     'oauth2_provider',
+    'orders',
 
     'core',
     'products',
