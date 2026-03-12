@@ -237,6 +237,10 @@ USE_TZ = True
 # Static files
 STATIC_URL = 'static/'
 
+# Media (uploaded files)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

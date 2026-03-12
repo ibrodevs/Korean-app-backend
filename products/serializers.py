@@ -160,6 +160,10 @@ class ProductBaseSerializer(TranslationMixin, serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
     main_image = serializers.SerializerMethodField()
+    category_slug = serializers.SerializerMethodField()
+    category_name = serializers.SerializerMethodField()
+    brand_slug = serializers.SerializerMethodField()
+    brand_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -173,6 +177,10 @@ class ProductBaseSerializer(TranslationMixin, serializers.ModelSerializer):
             "name",
             "description",
             "main_image",
+            "category_slug",
+            "category_name",
+            "brand_slug",
+            "brand_name",
         )
 
     def _get_translation_qs(self, obj):
@@ -191,6 +199,34 @@ class ProductBaseSerializer(TranslationMixin, serializers.ModelSerializer):
         if not image:
             return None
         return ProductImageSerializer(image, context=self.context).data
+
+    def get_category_slug(self, obj):
+        try:
+            return obj.category.slug
+        except Exception:
+            return None
+
+    def get_category_name(self, obj):
+        try:
+            translation = self._get_translation(obj.category.translations.all())
+            return translation.name if translation else obj.category.slug
+        except Exception:
+            return None
+
+    def get_brand_slug(self, obj):
+        try:
+            return obj.brand.slug if obj.brand else None
+        except Exception:
+            return None
+
+    def get_brand_name(self, obj):
+        try:
+            if not obj.brand:
+                return None
+            translation = self._get_translation(obj.brand.translations.all())
+            return translation.name if translation else obj.brand.slug
+        except Exception:
+            return None
 
 
 class ProductListSerializer(ProductBaseSerializer):
