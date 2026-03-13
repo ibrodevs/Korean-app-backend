@@ -20,6 +20,17 @@ from .serializers import (
 
 
 # Create your views here.
+class HealthCheckView(APIView):
+    """
+    Simple health check endpoint for monitoring.
+    Returns 200 OK if the application is running.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response({"status": "ok"}, status=status.HTTP_200_OK)
+
+
 class CreateUserAPIView(generics.CreateAPIView):
     permission_classes = [AllowAny]
     queryset = CustomUser.objects.all()

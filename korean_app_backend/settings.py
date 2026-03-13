@@ -2,9 +2,25 @@
 Django settings for korean_app_backend project.
 """
 
+import os
+import sys
 from pathlib import Path
 from datetime import timedelta
 from decouple import config
+import sentry_sdk
+from sentry_sdk.integrations.django import DjangoIntegration
+
+# Sentry initialization
+# Only active if SENTRY_DSN is set in .env
+_sentry_dsn = config('SENTRY_DSN', default='')
+if _sentry_dsn:
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        integrations=[DjangoIntegration()],
+        traces_sample_rate=config('SENTRY_TRACES_SAMPLE_RATE', default=0.1, cast=float),
+        send_default_pii=True,
+        environment=config('SENTRY_ENVIRONMENT', default='production'),
+    )
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -78,26 +94,31 @@ WSGI_APPLICATION = 'korean_app_backend.wsgi.application'
 
 
 # Database
+# Set USE_SQLITE=True in .env only for local dev without Docker.
+# In production (Docker / any server) always use PostgreSQL.
 import os
-db_name = config('DB_NAME', default=str(BASE_DIR / 'db.sqlite3'))
-if db_name.endswith('.sqlite3') or db_name.endswith('.sqlite'):
-    print("Using SQLite database")
+_use_sqlite = config('USE_SQLITE', default=False, cast=bool)
+
+if _use_sqlite:
+    print("[DB] Using SQLite (dev-only mode)")
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': db_name,
+            'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
 else:
-    print("Using PostgreSQL database")
+    print("[DB] Using PostgreSQL")
     DATABASES = {
-        "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("DB_NAME", "korean_app"),
-        "USER": os.getenv("DB_USER", "postgres"),
-        "PASSWORD": os.getenv("DB_PASSWORD", "postgres"),
-        "HOST": os.getenv("DB_HOST", "db"),
-        "PORT": os.getenv("DB_PORT", "5432"),
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': config('DB_NAME', default='korean_app'),
+            'USER': config('DB_USER', default='postgres'),
+            'PASSWORD': config('DB_PASSWORD', default='postgres'),
+            'HOST': config('DB_HOST', default='db'),
+            'PORT': config('DB_PORT', default='5432'),
+            # Reuse DB connections across requests (reduces ~5ms overhead per request)
+            'CONN_MAX_AGE': 60,
         }
     }
 
@@ -140,7 +161,7 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
-    ],
+    ] if 'test' not in sys.argv else [],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '100/hour',
         'login': '5/minute',
@@ -207,15 +228,17 @@ SIMPLE_JWT = {
     'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
 }
 
-# CORS Settings (for development)
-CORS_ALLOW_ALL_ORIGINS = True  # Only for development - restrict in production
-CORS_ALLOW_CREDENTIALS = True
+# CORS Settings
+# In development (DEBUG=True): allow all origins for easy frontend work.
+# In production (DEBUG=False): restrict to specific domains via CORS_ALLOWED_ORIGINS env var.
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    CORS_ALLOW_ALL_ORIGINS = False
+    _cors_origins = config('CORS_ALLOWED_ORIGINS', default='')
+    CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins.split(',') if o.strip()]
 
-# Or specify allowed origins:
-# CORS_ALLOWED_ORIGINS = [
-#     "http://localhost:3000",
-#     "http://127.0.0.1:3000",
-# ]
+CORS_ALLOW_CREDENTIALS = True
 
 
 SPECTACULAR_SETTINGS = {
@@ -236,7 +259,9 @@ USE_I18N = True
 USE_TZ = True
 
 # Static files
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+# collectstatic writes here; nginx serves from this directory
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Media (uploaded files)
 MEDIA_URL = '/media/'

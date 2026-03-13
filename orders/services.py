@@ -140,11 +140,14 @@ def create_order_from_cart(*, user: "CustomUser", data: dict) -> Order:
     order.recalculate_totals(save=False)
     order.save(update_fields=["subtotal", "total_amount", "updated_at"])
 
-    # ── 6. Deduct stock ───────────────────────────────────────────────────────
+    # ── 6. Deduct stock (single bulk UPDATE instead of N individual saves) ────
+    variants_to_update = []
     for cart_item in cart_items:
         variant = locked_variants[cart_item.variant_id]
         variant.stock -= cart_item.quantity
-        variant.save(update_fields=["stock"])
+        variants_to_update.append(variant)
+
+    ProductVariant.objects.bulk_update(variants_to_update, ["stock"])
 
     # ── 7. Clear cart ─────────────────────────────────────────────────────────
     cart_items.delete()
@@ -183,14 +186,24 @@ def cancel_order(
 
     old_status = order.status
     order.status = Order.Status.CANCELED
+    from django.utils import timezone
+    order.canceled_at = timezone.now()
     order.save(update_fields=["status", "canceled_at", "updated_at"])
 
-    # Restore stock for each item
-    for item in order.items.select_related("variant").all():
-        if item.variant is not None:
-            ProductVariant.objects.filter(pk=item.variant_id).update(
-                stock=F("stock") + item.quantity
+    # Restore stock for each item in a single efficient query
+    item_quantities = {}
+    for item in order.items.filter(variant__isnull=False):
+        item_quantities[item.variant_id] = item_quantities.get(item.variant_id, 0) + item.quantity
+
+    if item_quantities:
+        from django.db.models import Case, When, PositiveIntegerField
+        ProductVariant.objects.filter(id__in=item_quantities.keys()).update(
+            stock=Case(
+                *[When(id=vid, then=F("stock") + qty) for vid, qty in item_quantities.items()],
+                default=F("stock"),
+                output_field=PositiveIntegerField()
             )
+        )
 
     OrderStatusHistory.log_status_change(
         order=order,

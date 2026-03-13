@@ -20,3 +20,6 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 # Copy project
 COPY . /app/
+
+# Collect static files into /app/staticfiles (served by nginx from shared Docker volume)
+RUN SECRET_KEY=build-time-placeholder python manage.py collectstatic --noinput || true

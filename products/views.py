@@ -184,6 +184,7 @@ class ProductListAPIView(generics.ListAPIView):
         context["language"] = lang
         return context
 
+    @cache_response(timeout=60 * 5)  # 5 min — list cache; invalidate on product changes
     @extend_schema(
         summary="Список товаров с фильтрацией и поиском",
         description=(
@@ -260,6 +261,7 @@ class ProductDetailAPIView(generics.RetrieveAPIView):
         context["language"] = lang
         return context
 
+    @cache_response(timeout=60 * 15)  # 15 min — product detail rarely changes
     @extend_schema(
         summary="Детальная карточка товара",
         description="Возвращает товар по slug со всеми вариантами, изображениями и атрибутами.",
@@ -293,6 +295,7 @@ class CatalogSearchAPIView(generics.ListAPIView):
         ),
         tags=["Catalog"],
     )
+    @cache_response(timeout=60 * 2)
     def list(self, request, *args, **kwargs):
         lang = request.query_params.get("lang", "ru")
         search = ProductDocument.search().filter("term", is_active=True)
