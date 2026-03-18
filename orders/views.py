@@ -27,6 +27,7 @@ class PickupLocationListAPIView(generics.ListAPIView):
     """
     permission_classes = [IsAuthenticated]
     serializer_class = PickupLocationSerializer
+    pagination_class = None
     queryset = PickupLocation.objects.filter(is_active=True)
 
     @extend_schema(

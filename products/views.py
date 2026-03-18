@@ -11,8 +11,6 @@ from django.views.decorators.cache import cache_page
 from django.utils.decorators import method_decorator
 from rest_framework_extensions.cache.decorators import cache_response
 
-from rest_framework.throttling import AnonRateThrottle
-
 from .models import (
     Category,
     Brand,
@@ -94,7 +92,7 @@ class ProductListAPIView(generics.ListAPIView):
     """
 
     permission_classes = [AllowAny]
-    throttle_classes = [AnonRateThrottle]
+    throttle_classes = []
     pagination_class = ProductLimitOffsetPagination
     serializer_class = ProductListSerializer
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
@@ -184,7 +182,6 @@ class ProductListAPIView(generics.ListAPIView):
         context["language"] = lang
         return context
 
-    @cache_response(timeout=60 * 5)  # 5 min — list cache; invalidate on product changes
     @extend_schema(
         summary="Список товаров с фильтрацией и поиском",
         description=(
@@ -238,6 +235,7 @@ class ProductListAPIView(generics.ListAPIView):
 
 class ProductDetailAPIView(generics.RetrieveAPIView):
     permission_classes = [AllowAny]
+    throttle_classes = []
     serializer_class = ProductDetailSerializer
     lookup_field = "slug"
     queryset = (
@@ -261,7 +259,6 @@ class ProductDetailAPIView(generics.RetrieveAPIView):
         context["language"] = lang
         return context
 
-    @cache_response(timeout=60 * 15)  # 15 min — product detail rarely changes
     @extend_schema(
         summary="Детальная карточка товара",
         description="Возвращает товар по slug со всеми вариантами, изображениями и атрибутами.",
@@ -279,7 +276,7 @@ class CatalogSearchAPIView(generics.ListAPIView):
     """
     permission_classes = [AllowAny]
     serializer_class = ProductListSerializer
-    throttle_classes = [AnonRateThrottle]
+    throttle_classes = []
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -475,6 +472,7 @@ class CatalogSearchAPIView(generics.ListAPIView):
 
 class CategoryTreeAPIView(generics.ListAPIView):
     permission_classes = [AllowAny]
+    throttle_classes = []
     serializer_class = CategoryTreeSerializer
 
     def get_queryset(self):
@@ -488,7 +486,6 @@ class CategoryTreeAPIView(generics.ListAPIView):
         context["language"] = lang
         return context
 
-    @cache_response(timeout=60 * 60)   # ← ДОБАВИТЬ
     @extend_schema(
         summary="Дерево категорий",
         description="Возвращает дерево категорий со всеми переводами.",
@@ -500,6 +497,7 @@ class CategoryTreeAPIView(generics.ListAPIView):
 
 class BrandListAPIView(generics.ListAPIView):
     permission_classes = [AllowAny]
+    throttle_classes = []
     serializer_class = BrandSerializer
 
     def get_queryset(self):
@@ -511,7 +509,6 @@ class BrandListAPIView(generics.ListAPIView):
         context["language"] = lang
         return context
         
-    @cache_response(timeout=60 * 60)   # ← ДОБАВИТЬ
     @extend_schema(
         summary="Список брендов",
         description="Возвращает список брендов с переводами.",
