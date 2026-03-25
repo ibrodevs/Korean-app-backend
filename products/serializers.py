@@ -1,5 +1,8 @@
 from rest_framework import serializers
 
+from django.utils import timezone
+from datetime import timedelta
+
 from .models import (
     Category,
     CategoryTranslation,
@@ -14,6 +17,7 @@ from .models import (
     AttributeValueTranslation,
     ProductVariantAttribute,
     ProductVariantMultiAttribute,
+    Tag,
 )
 
 
@@ -159,6 +163,17 @@ class ProductVariantSerializer(serializers.ModelSerializer):
 class ProductBaseSerializer(TranslationMixin, serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
+    price = serializers.DecimalField(
+        source="min_price", max_digits=12, decimal_places=2, read_only=True
+    )
+    old_price = serializers.SerializerMethodField()
+    image = serializers.SerializerMethodField()
+    is_sale = serializers.SerializerMethodField()
+    is_new = serializers.SerializerMethodField()
+    stock_status = serializers.SerializerMethodField()
+    tags = serializers.SerializerMethodField()
+    rating = serializers.DecimalField(max_digits=3, decimal_places=1, read_only=True)
+    review_count = serializers.IntegerField(read_only=True)
     main_image = serializers.SerializerMethodField()
     category_slug = serializers.SerializerMethodField()
     category_name = serializers.SerializerMethodField()
@@ -173,9 +188,18 @@ class ProductBaseSerializer(TranslationMixin, serializers.ModelSerializer):
             "category",
             "brand",
             "is_active",
-            "min_price",
             "name",
             "description",
+            "price",
+            "old_price",
+            "image",
+            "is_sale",
+            "is_new",
+            "rating",
+            "review_count",
+            "stock_status",
+            "tags",
+            "min_price",
             "main_image",
             "category_slug",
             "category_name",
@@ -186,6 +210,14 @@ class ProductBaseSerializer(TranslationMixin, serializers.ModelSerializer):
     def _get_translation_qs(self, obj):
         return obj.translations.all()
 
+    def _get_default_variant(self, obj):
+        if not hasattr(obj, "_default_variant_cache"):
+            variants = list(obj.variants.filter(is_active=True))
+            obj._default_variant_cache = next(
+                (v for v in variants if v.is_default), variants[0] if variants else None
+            )
+        return obj._default_variant_cache
+
     def get_name(self, obj):
         translation = self._get_translation(self._get_translation_qs(obj))
         return translation.name if translation else None
@@ -193,6 +225,42 @@ class ProductBaseSerializer(TranslationMixin, serializers.ModelSerializer):
     def get_description(self, obj):
         translation = self._get_translation(self._get_translation_qs(obj))
         return translation.description if translation else None
+
+    def get_old_price(self, obj):
+        variant = self._get_default_variant(obj)
+        if variant and variant.old_price:
+            return variant.old_price
+        return None
+
+    def get_image(self, obj):
+        image = obj.images.filter(is_main=True).first() or obj.images.first()
+        if not image or not image.image:
+            return None
+        request = self.context.get("request")
+        if request:
+            return request.build_absolute_uri(image.image.url)
+        return image.image.url
+
+    def get_is_sale(self, obj):
+        variant = self._get_default_variant(obj)
+        if variant and variant.old_price and variant.old_price > variant.price:
+            return True
+        return False
+
+    def get_is_new(self, obj):
+        return obj.created_at >= timezone.now() - timedelta(days=7)
+
+    def get_stock_status(self, obj):
+        variants = list(obj.variants.filter(is_active=True))
+        total_stock = sum(v.stock for v in variants)
+        if total_stock <= 0:
+            return "out_of_stock"
+        if total_stock < 5:
+            return "low_stock"
+        return "in_stock"
+
+    def get_tags(self, obj):
+        return [tag.name for tag in obj.tags.all()]
 
     def get_main_image(self, obj):
         image = obj.images.filter(is_main=True).first() or obj.images.first()

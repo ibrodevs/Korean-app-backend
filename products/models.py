@@ -70,6 +70,14 @@ class BrandTranslation(models.Model):
         return f"{self.name} ({self.language})"
 
 
+class Tag(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(unique=True)
+
+    def __str__(self):
+        return self.name
+
+
 class Product(models.Model):
     category = models.ForeignKey(
         Category,
@@ -93,6 +101,14 @@ class Product(models.Model):
         blank=True,
         db_index=True,
     )
+    rating = models.DecimalField(
+        max_digits=3,
+        decimal_places=1,
+        default=0,
+        db_index=True,
+    )
+    review_count = models.PositiveIntegerField(default=0)
+    tags = models.ManyToManyField(Tag, blank=True, related_name="products")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -101,6 +117,7 @@ class Product(models.Model):
             models.Index(fields=["is_active", "category", "brand"]),
             models.Index(fields=["-created_at"]),
             models.Index(fields=["min_price"]),
+            models.Index(fields=["rating"]),
         ]
 
     def __str__(self):

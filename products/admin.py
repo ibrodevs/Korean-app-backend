@@ -10,7 +10,8 @@ from .models import (
     Attribute, AttributeTranslation, AttributeValue, AttributeValueTranslation,
     AttributeTextValue, AttributeIntValue, AttributeFloatValue,
     AttributeBooleanValue, AttributeColorValue,
-    ProductVariantAttribute, ProductVariantMultiAttribute
+    ProductVariantAttribute, ProductVariantMultiAttribute,
+    Tag,
 )
 
 
@@ -114,10 +115,10 @@ class ProductAdmin(admin.ModelAdmin):
     
     fieldsets = [
         ('Основная информация', {
-            'fields': ['category', 'brand', 'slug', 'is_active']
+            'fields': ['category', 'brand', 'slug', 'is_active', 'tags']
         }),
-        ('Цены', {
-            'fields': ['min_price'],
+        ('Цены и рейтинг', {
+            'fields': ['min_price', 'rating', 'review_count'],
             'classes': ['collapse']
         }),
         ('Даты', {
@@ -358,6 +359,13 @@ class SimpleAttributeValueAdmin(admin.ModelAdmin):
             )
         
         return queryset, use_distinct
+@admin.register(Tag)
+class TagAdmin(admin.ModelAdmin):
+    list_display = ["name", "slug"]
+    search_fields = ["name", "slug"]
+    prepopulated_fields = {"slug": ("name",)}
+
+
 # Настройка заголовка админки
 admin.site.site_header = 'Управление интернет-магазином'
 admin.site.site_title = 'Админка магазина'

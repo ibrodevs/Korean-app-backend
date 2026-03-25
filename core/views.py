@@ -4,8 +4,9 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from .serializers import WriteUserSerializer, ListUserSerializer
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework_simplejwt.tokens import RefreshToken
+from .permissions import IsOwnerOrAdmin
 from rest_framework_simplejwt.exceptions import TokenError
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiTypes
@@ -60,13 +61,13 @@ class CreateUserAPIView(generics.CreateAPIView):
         )
 
 class UpdateUserAPIView(generics.UpdateAPIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
     queryset = CustomUser.objects.all()
     serializer_class = WriteUserSerializer
 
 
 class ListUsers(generics.ListAPIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAdminUser]
     queryset = CustomUser.objects.all()
     serializer_class = ListUserSerializer
 

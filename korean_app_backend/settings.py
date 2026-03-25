@@ -58,6 +58,7 @@ INSTALLED_APPS = [
 
     'core',
     'products',
+    'favorites',
     'django_filters',
 ]
 
@@ -149,7 +150,7 @@ REST_FRAMEWORK = {
     ),
 
     'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.AllowAny',
+        'rest_framework.permissions.IsAuthenticated',
     ),
 
     'DEFAULT_RENDERER_CLASSES': (
@@ -179,7 +180,7 @@ REST_FRAMEWORK = {
 }
 
 
-CACHES = {
+CACHES_REDIS_DISABLED = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
         "LOCATION": config("REDIS_URL", default="redis://127.0.0.1:6379/1"),
@@ -194,6 +195,10 @@ ELASTICSEARCH_DSL = {
         'hosts': config('ELASTICSEARCH_URL', default='http://localhost:9200'),
     },
 }
+
+# Disable ES auto-indexing signals during tests
+if 'test' in sys.argv or 'pytest' in sys.modules:
+    ELASTICSEARCH_DSL_SIGNAL_PROCESSOR = 'django_elasticsearch_dsl.signals.BaseSignalProcessor'
 
 # JWT Settings
 SIMPLE_JWT = {
@@ -280,3 +285,11 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 GOOGLE_CLIENT_ID = ''  # Web client ID (required)
 GOOGLE_IOS_CLIENT_ID = ''  # iOS client ID (optional, but needed for iOS app)
 GOOGLE_ANDROID_CLIENT_ID = ''  # Android client ID (optional, but needed for Android app)
+
+# Local development cache (no Redis needed)
+if not config("REDIS_URL", default=""):
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        }
+    }
