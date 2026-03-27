@@ -15,6 +15,7 @@ from drf_spectacular.views import (
 from core.views import HealthCheckView
 
 urlpatterns = [
+    path('orders/', include('orders.urls')),
     path("healthz/", HealthCheckView.as_view(), name="health_check"),
     path("admin/", admin.site.urls),
     path(
