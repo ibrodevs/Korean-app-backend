@@ -1,9 +1,10 @@
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, OpenApiTypes
-from rest_framework import generics, status
+from rest_framework import generics, status, serializers
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from .services import update_order_status, update_payment_status
 
 from .models import Order, PickupLocation
 from .serializers import (
@@ -110,7 +111,13 @@ class MyOrderListAPIView(generics.ListAPIView):
             qs = qs.filter(payment_status=payment_status_filter)
 
         return qs
-
+    def get_object(self):
+        """Возвращаем конкретный заказ пользователя или 404."""
+        return get_object_or_404(
+            Order.objects.prefetch_related("items"),
+            pk=self.kwargs["pk"],
+            user=self.request.user
+        )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GET /orders/{id}/
@@ -172,3 +179,80 @@ class OrderCancelAPIView(APIView):
             OrderDetailSerializer(updated_order).data,
             status=status.HTTP_200_OK,
         )
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /orders/{id}/update-status/
+# ─────────────────────────────────────────────────────────────────────────────
+
+class OrderUpdateStatusAPIView(APIView):
+    """
+    Update order status (for admin / webhook use).
+
+    Uses services.update_order_status.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    class StatusUpdateSerializer(serializers.Serializer):
+        new_status = serializers.ChoiceField(choices=Order.Status.choices)
+        comment = serializers.CharField(required=False, allow_blank=True, default="")
+
+    @extend_schema(
+        summary="Update order status",
+        request=StatusUpdateSerializer,
+        responses={200: OrderDetailSerializer, 400: OpenApiTypes.OBJECT, 404: OpenApiTypes.OBJECT},
+    )
+    def post(self, request, pk):
+        serializer = self.StatusUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        order = get_object_or_404(Order, pk=pk)
+
+        updated_order = update_order_status(
+            order=order,
+            new_status=serializer.validated_data["new_status"],
+            comment=serializer.validated_data.get("comment", ""),
+            changed_by=request.user,
+        )
+
+        return Response(OrderDetailSerializer(updated_order).data, status=status.HTTP_200_OK)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /orders/{id}/update-payment/
+# ─────────────────────────────────────────────────────────────────────────────
+
+class OrderUpdatePaymentAPIView(APIView):
+    """
+    Update order payment status (for webhook / payment provider callbacks).
+
+    Uses services.update_payment_status.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    class PaymentUpdateSerializer(serializers.Serializer):
+        new_payment_status = serializers.ChoiceField(choices=Order.PaymentStatus.choices)
+        comment = serializers.CharField(required=False, allow_blank=True, default="")
+
+    @extend_schema(
+        summary="Update order payment status",
+        request=PaymentUpdateSerializer,
+        responses={200: OrderDetailSerializer, 400: OpenApiTypes.OBJECT, 404: OpenApiTypes.OBJECT},
+    )
+    def post(self, request, pk):
+        serializer = self.PaymentUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        order = get_object_or_404(Order, pk=pk)
+
+        updated_order = update_payment_status(
+            order=order,
+            new_payment_status=serializer.validated_data["new_payment_status"],
+            comment=serializer.validated_data.get("comment", ""),
+            changed_by=request.user,
+        )
+
+        return Response(OrderDetailSerializer(updated_order).data, status=status.HTTP_200_OK)

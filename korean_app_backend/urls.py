@@ -23,6 +23,7 @@ class PublicTokenRefreshView(TokenRefreshView):
 
 
 urlpatterns = [
+    path('orders/', include('orders.urls')),
     path("healthz/", HealthCheckView.as_view(), name="health_check"),
     path("admin/", admin.site.urls),
     path(

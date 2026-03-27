@@ -6,15 +6,15 @@ Keep views lean: they validate input, call a service, return the response.
 """
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import TYPE_CHECKING
-
 from django.db import transaction
 from django.db.models import F
 from rest_framework.exceptions import ValidationError
 
-from core.models import Cart, CartItem
+from .models import Cart, CartItem
 from products.models import ProductVariant
+
+
 
 from .models import Order, OrderItem, OrderStatusHistory
 
@@ -297,6 +297,7 @@ def update_payment_status(
     )
 
     return order
+
 
 
 

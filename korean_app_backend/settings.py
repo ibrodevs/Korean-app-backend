@@ -116,7 +116,7 @@ else:
             'NAME': config('DB_NAME', default='korean_app'),
             'USER': config('DB_USER', default='postgres'),
             'PASSWORD': config('DB_PASSWORD', default='postgres'),
-            'HOST': config('DB_HOST', default='db'),
+            'HOST': 'localhost',
             'PORT': config('DB_PORT', default='5432'),
             # Reuse DB connections across requests (reduces ~5ms overhead per request)
             'CONN_MAX_AGE': 60,

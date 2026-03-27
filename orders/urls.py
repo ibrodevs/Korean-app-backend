@@ -1,5 +1,5 @@
-from django.urls import path
-
+from django.urls import path, include
+from django.contrib import admin
 from .views import (
     MyOrderDetailAPIView,
     MyOrderListAPIView,
@@ -7,6 +7,7 @@ from .views import (
     OrderCheckoutAPIView,
     PickupLocationListAPIView,
 )
+
 
 urlpatterns = [
     # GET  — list active pickup locations (used at checkout)
@@ -23,4 +24,5 @@ urlpatterns = [
 
     # POST — cancel order
     path("<int:pk>/cancel/", OrderCancelAPIView.as_view(), name="order-cancel"),
+
 ]
