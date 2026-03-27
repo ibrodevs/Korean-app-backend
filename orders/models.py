@@ -268,11 +268,11 @@ class Order(models.Model):
         ]
         constraints = [
             models.CheckConstraint(
-                check=models.Q(total_amount__gte=0),
+                condition=models.Q(total_amount__gte=0),
                 name="order_total_amount_non_negative",
             ),
             models.CheckConstraint(
-                check=models.Q(subtotal__gte=0),
+                condition=models.Q(subtotal__gte=0),
                 name="order_subtotal_non_negative",
             ),
         ]
@@ -504,11 +504,11 @@ class OrderItem(models.Model):
         ]
         constraints = [
             models.CheckConstraint(
-                check=models.Q(quantity__gte=1),
+                condition=models.Q(quantity__gte=1),
                 name="order_item_quantity_positive",
             ),
             models.CheckConstraint(
-                check=models.Q(unit_price__gte=0),
+                condition=models.Q(unit_price__gte=0),
                 name="order_item_unit_price_non_negative",
             ),
         ]

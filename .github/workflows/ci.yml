@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      SECRET_KEY: django-insecure-ci-test-key
+      DEBUG: "True"
+      USE_SQLITE: "True"
+      DJANGO_SETTINGS_MODULE: korean_app_backend.settings
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint with ruff
+        run: |
+          pip install ruff isort
+          ruff check . --select=E,F,W --ignore=E501
+
+      - name: Check import order
+        run: isort . --check-only --diff
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short

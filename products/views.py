@@ -1,4 +1,4 @@
-from django.db.models import Q, Min, Max, Count
+from django.db.models import Q, Min, Max, Count, F as models_F
 from django_filters.rest_framework import DjangoFilterBackend, FilterSet, BooleanFilter, CharFilter
 from rest_framework import generics
 from rest_framework.exceptions import ValidationError
@@ -52,17 +52,16 @@ class ProductFilterSet(FilterSet):
     brand = CharFilter(field_name="brand__slug")
     price_min = CharFilter(method="filter_price_min")
     price_max = CharFilter(method="filter_price_max")
+    sale_only = BooleanFilter(method="filter_sale_only")
+    in_stock_only = BooleanFilter(method="filter_in_stock_only")
+    rating_min = CharFilter(method="filter_rating_min")
+    tags = CharFilter(method="filter_tags")
 
     class Meta:
         model = Product
         fields = ["is_active", "category", "brand"]
 
     def filter_category(self, queryset, name, value):
-        """Filter products by category slug.
-
-        Categories are hierarchical (MPTT). When a parent category slug is provided,
-        include products from all descendant categories as well.
-        """
         value = (value or "").strip()
         if not value:
             return queryset
@@ -79,13 +78,41 @@ class ProductFilterSet(FilterSet):
         try:
             return queryset.filter(min_price__gte=value)
         except (TypeError, ValueError):
-            raise ValidationError({"price[min]": "Must be a number."})
+            raise ValidationError({"price_min": "Must be a number."})
 
     def filter_price_max(self, queryset, name, value):
         try:
             return queryset.filter(min_price__lte=value)
         except (TypeError, ValueError):
-            raise ValidationError({"price[max]": "Must be a number."})
+            raise ValidationError({"price_max": "Must be a number."})
+
+    def filter_sale_only(self, queryset, name, value):
+        if value:
+            return queryset.filter(
+                variants__is_active=True,
+                variants__old_price__isnull=False,
+                variants__old_price__gt=models_F("variants__price"),
+            ).distinct()
+        return queryset
+
+    def filter_in_stock_only(self, queryset, name, value):
+        if value:
+            return queryset.filter(
+                variants__is_active=True, variants__stock__gt=0
+            ).distinct()
+        return queryset
+
+    def filter_rating_min(self, queryset, name, value):
+        try:
+            return queryset.filter(rating__gte=float(value))
+        except (TypeError, ValueError):
+            raise ValidationError({"rating_min": "Must be a number."})
+
+    def filter_tags(self, queryset, name, value):
+        tag_names = [t.strip() for t in value.split(",") if t.strip()]
+        if tag_names:
+            return queryset.filter(tags__name__in=tag_names).distinct()
+        return queryset
 
 
 class ProductListAPIView(generics.ListAPIView):
@@ -110,6 +137,8 @@ class ProductListAPIView(generics.ListAPIView):
             .prefetch_related(
                 "translations",
                 "images",
+                "variants",
+                "tags",
                 "category__translations",
                 "brand__translations",
             )
@@ -120,20 +149,6 @@ class ProductListAPIView(generics.ListAPIView):
         attr_params = {k: v for k, v in params.items() if k.startswith("attr_")}
         if attr_params:
             qs = self._apply_attribute_filters(qs, attr_params)
-
-        # price[min] / price[max]
-        price_min = params.get("price[min]")
-        price_max = params.get("price[max]")
-        if price_min is not None:
-            try:
-                qs = qs.filter(min_price__gte=price_min)
-            except (TypeError, ValueError):
-                raise ValidationError({"price[min]": "Must be a number."})
-        if price_max is not None:
-            try:
-                qs = qs.filter(min_price__lte=price_max)
-            except (TypeError, ValueError):
-                raise ValidationError({"price[max]": "Must be a number."})
 
         return qs
 
@@ -224,6 +239,30 @@ class ProductListAPIView(generics.ListAPIView):
                 type=OpenApiTypes.STR,
             ),
             OpenApiParameter(
+                name="sale_only",
+                description="Только товары со скидкой",
+                required=False,
+                type=OpenApiTypes.BOOL,
+            ),
+            OpenApiParameter(
+                name="in_stock_only",
+                description="Только товары в наличии",
+                required=False,
+                type=OpenApiTypes.BOOL,
+            ),
+            OpenApiParameter(
+                name="rating_min",
+                description="Минимальный рейтинг",
+                required=False,
+                type=OpenApiTypes.NUMBER,
+            ),
+            OpenApiParameter(
+                name="tags",
+                description="Фильтр по тегам (через запятую)",
+                required=False,
+                type=OpenApiTypes.STR,
+            ),
+            OpenApiParameter(
                 name="lang",
                 description="Язык переводов (ru, en, kg)",
                 required=False,
@@ -245,6 +284,7 @@ class ProductDetailAPIView(generics.RetrieveAPIView):
         .prefetch_related(
             "translations",
             "images",
+            "tags",
             "category__translations",
             "brand__translations",
             "variants__images",
@@ -476,6 +516,7 @@ class CatalogSearchAPIView(generics.ListAPIView):
 class CategoryTreeAPIView(generics.ListAPIView):
     permission_classes = [AllowAny]
     serializer_class = CategoryTreeSerializer
+    pagination_class = ProductLimitOffsetPagination
 
     def get_queryset(self):
         return Category.objects.filter(parent__isnull=True).prefetch_related(
@@ -501,6 +542,7 @@ class CategoryTreeAPIView(generics.ListAPIView):
 class BrandListAPIView(generics.ListAPIView):
     permission_classes = [AllowAny]
     serializer_class = BrandSerializer
+    pagination_class = ProductLimitOffsetPagination
 
     def get_queryset(self):
         return Brand.objects.prefetch_related("translations")

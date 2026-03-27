@@ -2,6 +2,8 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from rest_framework.permissions import AllowAny
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from core.token_serializers import EmailTokenObtainPairSerializer
@@ -13,6 +15,12 @@ from drf_spectacular.views import (
 )
 
 from core.views import HealthCheckView
+
+
+class PublicTokenRefreshView(TokenRefreshView):
+    permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle]
+
 
 urlpatterns = [
     path('orders/', include('orders.urls')),
@@ -27,7 +35,7 @@ urlpatterns = [
     ),
     path(
         "api/auth/token/refresh/",
-        TokenRefreshView.as_view(),
+        PublicTokenRefreshView.as_view(),
         name="token_refresh",
     ),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
@@ -46,6 +54,7 @@ urlpatterns = [
     path("api/admin/", include("products.admin_urls")),
     path("api/v1/", include("products.urls")),
     path("api/v1/orders/", include("orders.urls")),
+    path("api/v1/", include("favorites.urls")),
 ]
 
 if settings.DEBUG:
