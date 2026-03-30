@@ -11,7 +11,7 @@ from django.db import transaction
 from django.db.models import F
 from rest_framework.exceptions import ValidationError
 
-from .models import Cart, CartItem
+from core.models import Cart, CartItem
 from products.models import ProductVariant
 
 
