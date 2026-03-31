@@ -1,5 +1,5 @@
 from rest_framework import status
-from products.models import Product, Category, ProductVariant, Attribute, AttributeValue
+from products.models import Product, Category, ProductVariant, Attribute
 from .base import AdminAPITestBase
 from decimal import Decimal
 
@@ -60,7 +60,7 @@ class TestAdminVariantAPI(AdminAPITestBase):
         self.assertTrue(v2.is_default)
 
     def test_multi_attribute_logic(self):
-        attr = Attribute.objects.create(slug="features", value_type="text", is_multiple=True)
+        Attribute.objects.create(slug="features", value_type="text", is_multiple=True)
         v = ProductVariant.objects.create(product=self.product, sku="v-multi", price=100)
         
         payload = [
@@ -76,7 +76,7 @@ class TestAdminVariantAPI(AdminAPITestBase):
         self.assertIn("bluetooth", vals)
 
     def test_single_attribute_logic(self):
-        attr = Attribute.objects.create(slug="color", value_type="text", is_multiple=False)
+        Attribute.objects.create(slug="color", value_type="text", is_multiple=False)
         v = ProductVariant.objects.create(product=self.product, sku="v-single", price=100)
         
         payload = {"attribute": "color", "value": "red"}

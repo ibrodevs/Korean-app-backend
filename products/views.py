@@ -1,4 +1,4 @@
-from django.db.models import Q, Min, Max, Count, F as models_F
+from django.db.models import Q, F as models_F
 from django_filters.rest_framework import DjangoFilterBackend, FilterSet, BooleanFilter, CharFilter
 from rest_framework import generics
 from rest_framework.exceptions import ValidationError
@@ -7,8 +7,6 @@ from rest_framework.pagination import CursorPagination, LimitOffsetPagination
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
-from django.views.decorators.cache import cache_page
-from django.utils.decorators import method_decorator
 from rest_framework_extensions.cache.decorators import cache_response
 
 from rest_framework.throttling import AnonRateThrottle
@@ -20,8 +18,6 @@ from .models import (
     ProductVariant,
     Attribute,
     AttributeValue,
-    ProductVariantAttribute,
-    ProductVariantMultiAttribute,
 )
 from .documents import ProductDocument
 from elasticsearch_dsl import Q
@@ -32,7 +28,6 @@ from .serializers import (
     ProductListSerializer,
     ProductDetailSerializer,
     BrandFacetSerializer,
-    PriceRangeFacetSerializer,
     AttributeFacetSerializer,
 )
 

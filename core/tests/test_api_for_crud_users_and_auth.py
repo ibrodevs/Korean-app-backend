@@ -1,5 +1,3 @@
-import requests 
-import pytest
 
 BASE_URL = 'http://localhost:8000/api'
 

@@ -1,13 +1,12 @@
 import os
 import django
-import sys
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "korean_app_backend.settings")
 django.setup()
 
-from rest_framework.test import APIClient
-from products.models import Attribute, AttributeValue
-from core.models import CustomUser
+from rest_framework.test import APIClient # noqa: E402
+from products.models import Attribute # noqa: E402
+from core.models import CustomUser  # noqa: E402
 
 client = APIClient()
 user = CustomUser.objects.create_superuser('admin@fail.com', 'pass')

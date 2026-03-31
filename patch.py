@@ -1,4 +1,3 @@
-import re
 
 file_path = "products/admin.py"
 with open(file_path, "r") as f:

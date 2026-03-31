@@ -56,7 +56,7 @@ class TestAdminCategoryAPI(AdminAPITestBase):
 
     def test_fail_delete_category_with_product_protect(self):
         cat = Category.objects.create(slug="protected")
-        p = Product.objects.create(slug="p1", category=cat)
+        Product.objects.create(slug="p1", category=cat)
         
         res = self.client.delete(f"/api/admin/categories/{cat.id}/")
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)

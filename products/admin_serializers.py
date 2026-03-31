@@ -493,7 +493,7 @@ class AdminProductSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         translations_data = validated_data.pop("translations", None)
-        variants_data = validated_data.pop("variants", None)
+        validated_data.pop("variants", None)
         
         with transaction.atomic():
             for attr, value in validated_data.items():

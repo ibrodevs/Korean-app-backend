@@ -6,7 +6,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from products.models import (
     Category, CategoryTranslation, Brand, BrandTranslation,
-    Product, ProductTranslation, ProductVariant, ProductImage, Tag,
+    Product, ProductTranslation, ProductVariant, Tag,
 )
 
 User = get_user_model()

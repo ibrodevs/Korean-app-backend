@@ -5,19 +5,13 @@ from datetime import timedelta
 
 from .models import (
     Category,
-    CategoryTranslation,
     Brand,
-    BrandTranslation,
     Product,
-    ProductTranslation,
     ProductVariant,
     ProductImage,
-    Attribute,
     AttributeValue,
-    AttributeValueTranslation,
     ProductVariantAttribute,
     ProductVariantMultiAttribute,
-    Tag,
 )
 
 

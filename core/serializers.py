@@ -1,5 +1,4 @@
 from rest_framework import serializers
-from rest_framework.response import Response
 from .models import CustomUser
 
 class WriteUserSerializer(serializers.ModelSerializer):
@@ -64,7 +63,7 @@ class CartItemCreateSerializer(serializers.Serializer):
 
     def validate_variant_id(self, value):
         try:
-            variant = ProductVariant.objects.select_related("product").get(
+            ProductVariant.objects.select_related("product").get(
                 id=value,
                 is_active=True,
                 product__is_active=True,

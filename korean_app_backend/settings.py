@@ -2,7 +2,6 @@
 Django settings for korean_app_backend project.
 """
 
-import os
 import sys
 from pathlib import Path
 from datetime import timedelta
@@ -97,7 +96,6 @@ WSGI_APPLICATION = 'korean_app_backend.wsgi.application'
 # Database
 # Set USE_SQLITE=True in .env only for local dev without Docker.
 # In production (Docker / any server) always use PostgreSQL.
-import os
 _use_sqlite = config('USE_SQLITE', default=False, cast=bool)
 
 if _use_sqlite:

@@ -3,12 +3,11 @@ from django.utils.html import format_html
 from django.db import models
 from django import forms
 from django.forms import TextInput, Textarea
-from mptt.admin import MPTTModelAdmin, DraggableMPTTAdmin
+from mptt.admin import DraggableMPTTAdmin
 from .models import (
     Category, CategoryTranslation, Brand, BrandTranslation,
     Product, ProductTranslation, ProductVariant, ProductImage,
-    Attribute, AttributeTranslation, AttributeValue, AttributeValueTranslation,
-    AttributeTextValue, AttributeIntValue, AttributeFloatValue,
+    Attribute, AttributeTranslation, AttributeValue, AttributeTextValue, AttributeIntValue, AttributeFloatValue,
     AttributeBooleanValue, AttributeColorValue,
     ProductVariantAttribute, ProductVariantMultiAttribute,
     Tag,
